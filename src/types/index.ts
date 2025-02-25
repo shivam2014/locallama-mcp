@@ -57,6 +57,9 @@ export interface Model {
     /** Cost per completion token */
     completion: number;
   };
+  
+  /** Maximum context window size in tokens */
+  contextWindow?: number;
 }
 
 /**
@@ -137,6 +140,8 @@ export interface RoutingDecision {
       paid: number;
       /** Whether cost was a factor in the decision */
       wasFactor: boolean;
+      /** Weight assigned to this factor */
+      weight?: number;
     };
     
     /** Task complexity */
@@ -145,6 +150,8 @@ export interface RoutingDecision {
       score: number;
       /** Whether complexity was a factor in the decision */
       wasFactor: boolean;
+      /** Weight assigned to this factor */
+      weight?: number;
     };
     
     /** Token usage */
@@ -153,8 +160,12 @@ export interface RoutingDecision {
       contextLength: number;
       /** Expected output length */
       outputLength: number;
+      /** Total tokens (context + output) */
+      totalTokens?: number;
       /** Whether token usage was a factor in the decision */
       wasFactor: boolean;
+      /** Weight assigned to this factor */
+      weight?: number;
     };
     
     /** User priority */
@@ -163,6 +174,16 @@ export interface RoutingDecision {
       value: 'speed' | 'cost' | 'quality';
       /** Whether priority was a factor in the decision */
       wasFactor: boolean;
+      /** Weight assigned to this factor */
+      weight?: number;
+    };
+    
+    /** Context window limitations */
+    contextWindow?: {
+      /** Whether context window was a factor in the decision */
+      wasFactor: boolean;
+      /** Weight assigned to this factor */
+      weight?: number;
     };
   };
   
@@ -171,6 +192,14 @@ export interface RoutingDecision {
   
   /** Explanation of the decision */
   explanation: string;
+  
+  /** Scores for each provider */
+  scores?: {
+    /** Score for local provider (0-1) */
+    local: number;
+    /** Score for paid provider (0-1) */
+    paid: number;
+  };
 }
 
 /**

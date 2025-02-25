@@ -44,23 +44,72 @@ export const costMonitor = {
     
     const models: Model[] = [];
     
+    // Model context window sizes (in tokens)
+    // These are approximate values and should be updated with accurate information
+    const modelContextWindows: Record<string, number> = {
+      // LM Studio models
+      'llama3': 8192,
+      'llama3-8b': 8192,
+      'llama3-70b': 8192,
+      'mistral-7b': 8192,
+      'mixtral-8x7b': 32768,
+      'qwen2.5-coder-3b-instruct': 32768,
+      'qwen2.5-7b-instruct': 32768,
+      'qwen2.5-72b-instruct': 32768,
+      'phi-3-mini-4k': 4096,
+      'phi-3-medium-4k': 4096,
+      'phi-3-small-8k': 8192,
+      'gemma-7b': 8192,
+      'gemma-2b': 8192,
+      
+      // Ollama models
+      'llama3:8b': 8192,
+      'llama3:70b': 8192,
+      'mistral': 8192,
+      'mixtral': 32768,
+      'qwen2:7b': 32768,
+      'qwen2:72b': 32768,
+      'phi3:mini': 4096,
+      'phi3:small': 8192,
+      'gemma:7b': 8192,
+      'gemma:2b': 8192,
+      
+      // Default fallbacks
+      'default': 4096
+    };
+    
     // Try to get models from LM Studio
     try {
       const lmStudioResponse = await axios.get(`${config.lmStudioEndpoint}/models`);
       if (lmStudioResponse.data && Array.isArray(lmStudioResponse.data.data)) {
-        const lmStudioModels = lmStudioResponse.data.data.map((model: any) => ({
-          id: model.id,
-          name: model.id,
-          provider: 'lm-studio',
-          capabilities: {
-            chat: true,
-            completion: true,
-          },
-          costPerToken: {
-            prompt: 0,
-            completion: 0,
-          },
-        }));
+        const lmStudioModels = lmStudioResponse.data.data.map((model: any) => {
+          // Try to determine context window size
+          let contextWindow = 4096; // Default fallback
+          
+          // Check if we have a known context window size for this model
+          const modelId = model.id.toLowerCase();
+          for (const [key, value] of Object.entries(modelContextWindows)) {
+            if (modelId.includes(key.toLowerCase())) {
+              contextWindow = value;
+              break;
+            }
+          }
+          
+          return {
+            id: model.id,
+            name: model.id,
+            provider: 'lm-studio',
+            capabilities: {
+              chat: true,
+              completion: true,
+            },
+            costPerToken: {
+              prompt: 0,
+              completion: 0,
+            },
+            contextWindow
+          };
+        });
         models.push(...lmStudioModels);
       }
     } catch (error) {
@@ -71,19 +120,57 @@ export const costMonitor = {
     try {
       const ollamaResponse = await axios.get(`${config.ollamaEndpoint}/tags`);
       if (ollamaResponse.data && Array.isArray(ollamaResponse.data.models)) {
-        const ollamaModels = ollamaResponse.data.models.map((model: any) => ({
-          id: model.name,
-          name: model.name,
-          provider: 'ollama',
-          capabilities: {
-            chat: true,
-            completion: true,
-          },
-          costPerToken: {
-            prompt: 0,
-            completion: 0,
-          },
-        }));
+        const ollamaModels = ollamaResponse.data.models.map((model: any) => {
+          // Try to determine context window size
+          let contextWindow = 4096; // Default fallback
+          
+          // Check if we have a known context window size for this model
+          const modelName = model.name.toLowerCase();
+          for (const [key, value] of Object.entries(modelContextWindows)) {
+            if (modelName.includes(key.toLowerCase())) {
+              contextWindow = value;
+              break;
+            }
+          }
+          
+          // Try to get more detailed model info from Ollama
+          try {
+            // This is an async operation inside a map, which isn't ideal
+            // In a production environment, we might want to use Promise.all
+            // or restructure this to avoid the nested async call
+            axios.get(`${config.ollamaEndpoint}/show`, { params: { name: model.name } })
+              .then(response => {
+                if (response.data && response.data.parameters) {
+                  // Some Ollama models expose context_length or context_window
+                  const ctxLength = response.data.parameters.context_length ||
+                                    response.data.parameters.context_window;
+                  if (ctxLength && typeof ctxLength === 'number') {
+                    contextWindow = ctxLength;
+                  }
+                }
+              })
+              .catch(err => {
+                logger.debug(`Failed to get detailed info for Ollama model ${model.name}:`, err);
+              });
+          } catch (detailError) {
+            logger.debug(`Error getting detailed info for Ollama model ${model.name}:`, detailError);
+          }
+          
+          return {
+            id: model.name,
+            name: model.name,
+            provider: 'ollama',
+            capabilities: {
+              chat: true,
+              completion: true,
+            },
+            costPerToken: {
+              prompt: 0,
+              completion: 0,
+            },
+            contextWindow
+          };
+        });
         models.push(...ollamaModels);
       }
     } catch (error) {
@@ -104,6 +191,7 @@ export const costMonitor = {
           prompt: 0,
           completion: 0,
         },
+        contextWindow: 8192 // Default context window for Llama 3
       });
     }
     
