@@ -58,8 +58,15 @@ async function fetchOpenRouterModels(apiKey) {
         console.log(`\nModel: ${model.id}`);
         console.log(`Pricing: ${JSON.stringify(model.pricing, null, 2)}`);
         
-        // Check if the model is free
-        const isFree = model.pricing?.prompt === 0 && model.pricing?.completion === 0;
+        // Check if the model is free - using a more robust approach
+        const promptPrice = parseFloat(model.pricing?.prompt || "0");
+        const completionPrice = parseFloat(model.pricing?.completion || "0");
+        
+        // Adding epsilon comparison for floating point precision
+        const EPSILON = 0.00000000001; // Small threshold to handle floating-point precision
+        const isFree = promptPrice < EPSILON && completionPrice < EPSILON;
+        
+        console.log(`Prompt cost: ${promptPrice}, Completion cost: ${completionPrice}`);
         console.log(`Is Free: ${isFree}`);
         
         if (isFree) {
