@@ -3,13 +3,18 @@
 /**
  * This script organizes benchmark results into subdirectories based on their type.
  * It helps keep the benchmark-results directory clean and organized.
- * 
+ *
  * Usage:
  *   node organize-benchmark-results.js
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get the directory name in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configuration
 const BENCHMARK_DIR = './benchmark-results';
@@ -50,6 +55,8 @@ function organizeFiles() {
     // Skip directories
     const filePath = path.join(BENCHMARK_DIR, file);
     if (fs.statSync(filePath).isDirectory()) {
+      console.log(`Skipping directory: ${file}`);
+      skippedCount++;
       return;
     }
     
@@ -67,6 +74,12 @@ function organizeFiles() {
       console.log(`Skipping file (no matching category): ${file}`);
       skippedCount++;
       return;
+    }
+    
+    // Create the target directory if it doesn't exist
+    const targetDirPath = path.join(BENCHMARK_DIR, targetDir);
+    if (!fs.existsSync(targetDirPath)) {
+      fs.mkdirSync(targetDirPath, { recursive: true });
     }
     
     // Move the file to the appropriate directory
