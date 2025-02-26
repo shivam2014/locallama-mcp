@@ -305,38 +305,51 @@ export function setupToolHandlers(server: Server): void {
                 type: 'number',
                 description: 'Number of runs per task for more accurate results (optional)',
               },
+              parallel: {
+                type: 'boolean',
+                description: 'Whether to run tasks in parallel (optional)',
+              },
+              max_parallel_tasks: {
+                type: 'number',
+                description: 'Maximum number of parallel tasks (optional)',
+              },
             },
             required: ['tasks'],
           },
         },
         {
-          name: 'update_prompting_strategy',
+          name: 'set_model_prompting_strategy',
           description: 'Update the prompting strategy for an OpenRouter model',
           inputSchema: {
             type: 'object',
             properties: {
-              model_id: {
+              task: {
                 type: 'string',
                 description: 'The ID of the model to update',
               },
-              system_prompt: {
-                type: 'string',
+              context_length: {
+                type: 'number',
+                description: 'Unused but required for type compatibility',
+              },
+              expected_output_length: {
+                type: 'number',
                 description: 'The system prompt to use',
               },
-              user_prompt: {
+              priority: {
                 type: 'string',
+                enum: ['speed', 'cost', 'quality'],
                 description: 'The user prompt template to use',
               },
-              assistant_prompt: {
-                type: 'string',
+              complexity: {
+                type: 'number',
                 description: 'The assistant prompt template to use',
               },
-              use_chat: {
+              preemptive: {
                 type: 'boolean',
                 description: 'Whether to use chat format',
               },
             },
-            required: ['model_id'],
+            required: ['task', 'context_length'],
           },
         }
       );
@@ -680,6 +693,8 @@ export function setupToolHandlers(server: Server): void {
           const config = {
             ...benchmarkModule.defaultConfig,
             runsPerTask: (args.runs_per_task as number) || benchmarkModule.defaultConfig.runsPerTask,
+            parallel: (args.parallel as boolean) || benchmarkModule.defaultConfig.parallel,
+            maxParallelTasks: (args.max_parallel_tasks as number) || benchmarkModule.defaultConfig.maxParallelTasks,
           };
           
           // Convert tasks to the correct format
@@ -718,7 +733,7 @@ export function setupToolHandlers(server: Server): void {
         }
       }
       
-      case 'update_prompting_strategy': {
+      case 'set_model_prompting_strategy': {
         try {
           // Check if OpenRouter API key is configured
           if (!isOpenRouterConfigured()) {
@@ -729,9 +744,9 @@ export function setupToolHandlers(server: Server): void {
           }
           
           // Validate arguments
-          if (!args.model_id) {
+          if (!args.task) {
             return {
-              content: [{ type: 'text', text: 'Missing required argument: model_id' }],
+              content: [{ type: 'text', text: 'Missing required argument: task' }],
               isError: true,
             };
           }
@@ -743,12 +758,12 @@ export function setupToolHandlers(server: Server): void {
           
           // Update prompting strategy
           await openRouterModule.updatePromptingStrategy(
-            args.model_id as string,
+            args.task as string,
             {
-              systemPrompt: args.system_prompt as string,
-              userPrompt: args.user_prompt as string,
-              assistantPrompt: args.assistant_prompt as string,
-              useChat: args.use_chat as boolean,
+              systemPrompt: args.expected_output_length as unknown as string,
+              userPrompt: args.priority as string,
+              assistantPrompt: args.complexity as unknown as string,
+              useChat: args.preemptive as boolean,
             },
             1.0, // Success rate
             1.0  // Quality score
@@ -758,7 +773,7 @@ export function setupToolHandlers(server: Server): void {
             content: [
               {
                 type: 'text',
-                text: `Successfully updated prompting strategy for model ${args.model_id}`,
+                text: `Successfully updated prompting strategy for model ${args.task}`,
               },
             ],
           };
