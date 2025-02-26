@@ -1,183 +1,136 @@
-// Test script to verify OpenRouter free model functionality
-console.log('Testing OpenRouter free model functionality');
-
-// Import required modules
+#!/usr/bin/env node
 import axios from 'axios';
-import { promises as fs } from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-
-// Get current directory
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Load environment variables
 dotenv.config();
 
-// Check if OpenRouter API key is configured
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-if (!OPENROUTER_API_KEY) {
-  console.error('❌ OpenRouter API key not configured in .env file');
-  process.exit(1);
+// Get the OpenRouter API key from environment variables or config file
+async function getOpenRouterApiKey() {
+  // Try to get from environment variable first
+  let apiKey = process.env.OPENROUTER_API_KEY;
+  
+  if (!apiKey) {
+    try {
+      // Try to read from MCP settings
+      const homeDir = process.env.HOME || process.env.USERPROFILE;
+      const mcpSettingsPath = path.join(homeDir, 'Library', 'Application Support', 'Code', 'User', 'globalStorage', 'rooveterinaryinc.roo-cline', 'settings', 'cline_mcp_settings.json');
+      
+      const mcpSettingsData = await fs.readFile(mcpSettingsPath, 'utf8');
+      const mcpSettings = JSON.parse(mcpSettingsData);
+      
+      if (mcpSettings.mcpServers && mcpSettings.mcpServers['locallama-mcp'] && mcpSettings.mcpServers['locallama-mcp'].env) {
+        apiKey = mcpSettings.mcpServers['locallama-mcp'].env.OPENROUTER_API_KEY;
+      }
+    } catch (error) {
+      console.error('Error reading MCP settings:', error);
+    }
+  }
+  
+  return apiKey;
 }
 
-// Function to query OpenRouter for available models
-async function getOpenRouterModels() {
+// Fetch models from OpenRouter API
+async function fetchOpenRouterModels(apiKey) {
+  console.log('Fetching models from OpenRouter API...');
+  
   try {
-    console.log('Querying OpenRouter for available models...');
-    
     const response = await axios.get('https://openrouter.ai/api/v1/models', {
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'HTTP-Referer': 'https://locallama-mcp.local',
-        'X-Title': 'LocalLama MCP Test'
+        'X-Title': 'LocalLama MCP Diagnostic'
       }
     });
     
+    console.log(`API Response Status: ${response.status}`);
+    
     if (response.data && Array.isArray(response.data.data)) {
-      console.log(`✅ Successfully retrieved ${response.data.data.length} models from OpenRouter`);
-      return response.data.data;
-    } else {
-      console.error('❌ Invalid response format from OpenRouter API');
-      console.error(response.data);
-      return [];
-    }
-  } catch (error) {
-    console.error('❌ Error querying OpenRouter API:', error.message);
-    if (error.response) {
-      console.error('Response data:', error.response.data);
-      console.error('Response status:', error.response.status);
-    }
-    return [];
-  }
-}
-
-// Function to identify free models
-function identifyFreeModels(models) {
-  const freeModels = models.filter(model => {
-    const isFree = model.pricing?.prompt === 0 && model.pricing?.completion === 0;
-    return isFree;
-  });
-  
-  return freeModels;
-}
-
-// Function to test a free model with a simple task
-async function testFreeModel(modelId) {
-  try {
-    console.log(`Testing free model: ${modelId}`);
-    
-    const response = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: modelId,
-        messages: [
-          { role: 'system', content: 'You are a helpful assistant.' },
-          { role: 'user', content: 'Write a short poem about coding.' }
-        ],
-        temperature: 0.7,
-        max_tokens: 150,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://locallama-mcp.local',
-          'X-Title': 'LocalLama MCP Test'
-        },
+      const models = response.data.data;
+      console.log(`Found ${models.length} models from OpenRouter`);
+      
+      // Identify free models
+      const freeModels = [];
+      
+      for (const model of models) {
+        console.log(`\nModel: ${model.id}`);
+        console.log(`Pricing: ${JSON.stringify(model.pricing, null, 2)}`);
+        
+        // Check if the model is free
+        const isFree = model.pricing?.prompt === 0 && model.pricing?.completion === 0;
+        console.log(`Is Free: ${isFree}`);
+        
+        if (isFree) {
+          freeModels.push(model);
+        }
       }
-    );
-    
-    if (response.status === 200 && response.data.choices && response.data.choices.length > 0) {
-      console.log(`✅ Successfully tested free model: ${modelId}`);
-      console.log('Response:');
-      console.log(response.data.choices[0].message.content);
-      console.log('Token usage:');
-      console.log(response.data.usage);
-      return true;
+      
+      console.log(`\nFound ${freeModels.length} free models:`);
+      for (const model of freeModels) {
+        console.log(`- ${model.id} (${model.name || 'Unnamed'})`);
+      }
+      
+      // Save the results to a file for reference
+      await fs.writeFile('openrouter-models-test-result.json', JSON.stringify({
+        timestamp: new Date().toISOString(),
+        totalModels: models.length,
+        freeModels: freeModels.map(m => ({
+          id: m.id,
+          name: m.name,
+          pricing: m.pricing
+        }))
+      }, null, 2));
+      
+      console.log('\nResults saved to openrouter-models-test-result.json');
+      
+      return { models, freeModels };
     } else {
-      console.error(`❌ Invalid response from free model: ${modelId}`);
-      console.error(response.data);
-      return false;
+      console.error('Invalid response format from OpenRouter API');
+      console.log('Response data:', JSON.stringify(response.data, null, 2));
+      return { models: [], freeModels: [] };
     }
   } catch (error) {
-    console.error(`❌ Error testing free model ${modelId}:`, error.message);
+    console.error('Error fetching models from OpenRouter API:');
+    
     if (error.response) {
-      console.error('Response data:', error.response.data);
-      console.error('Response status:', error.response.status);
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.error(`Status: ${error.response.status}`);
+      console.error(`Headers: ${JSON.stringify(error.response.headers, null, 2)}`);
+      console.error(`Data: ${JSON.stringify(error.response.data, null, 2)}`);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('No response received from server');
+      console.error(error.request);
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      console.error('Error setting up request:', error.message);
     }
-    return false;
+    
+    return { models: [], freeModels: [] };
   }
 }
 
-// Main function to run the test
+// Main function
 async function main() {
-  console.log('=== OpenRouter Free Model Test ===');
+  console.log('OpenRouter Free Models Diagnostic Tool');
+  console.log('=====================================\n');
   
-  // Get all models from OpenRouter
-  const allModels = await getOpenRouterModels();
-  if (allModels.length === 0) {
-    console.error('❌ No models retrieved from OpenRouter, cannot proceed with test');
+  // Get API key
+  const apiKey = await getOpenRouterApiKey();
+  
+  if (!apiKey) {
+    console.error('Error: OpenRouter API key not found. Please set the OPENROUTER_API_KEY environment variable or configure it in the MCP settings.');
     process.exit(1);
   }
   
-  // Identify free models
-  const freeModels = identifyFreeModels(allModels);
-  console.log(`Found ${freeModels.length} free models out of ${allModels.length} total models`);
+  console.log(`Using API key: ${apiKey.substring(0, 10)}...`);
   
-  if (freeModels.length === 0) {
-    console.log('⚠️ No free models found in OpenRouter');
-    console.log('This could be normal as OpenRouter may not have any free models available at the moment');
-    process.exit(0);
-  }
-  
-  // Display free models
-  console.log('\nFree models:');
-  freeModels.forEach((model, index) => {
-    console.log(`${index + 1}. ${model.id} (${model.name || 'Unnamed'})`);
-    console.log(`   Context window: ${model.context_length || 'Unknown'}`);
-    console.log(`   Features: ${JSON.stringify(model.features || {})}`);
-  });
-  
-  // Test the first free model
-  if (freeModels.length > 0) {
-    console.log('\n=== Testing a Free Model ===');
-    const testModel = freeModels[0];
-    console.log(`Selected model for testing: ${testModel.id} (${testModel.name || 'Unnamed'})`);
-    
-    const success = await testFreeModel(testModel.id);
-    
-    if (success) {
-      console.log('\n✅ Free model test completed successfully');
-      
-      // Save the free model information to a file
-      const freeModelInfo = {
-        timestamp: new Date().toISOString(),
-        totalModels: allModels.length,
-        freeModels: freeModels.map(model => ({
-          id: model.id,
-          name: model.name || 'Unnamed',
-          contextWindow: model.context_length || 'Unknown',
-          features: model.features || {}
-        })),
-        testedModel: testModel.id
-      };
-      
-      await fs.writeFile(
-        path.join(process.cwd(), 'openrouter-free-models-test-result.json'),
-        JSON.stringify(freeModelInfo, null, 2)
-      );
-      
-      console.log('Free model information saved to openrouter-free-models-test-result.json');
-    } else {
-      console.error('\n❌ Free model test failed');
-    }
-  }
+  // Fetch models
+  await fetchOpenRouterModels(apiKey);
 }
 
-// Run the test
-main().catch(error => {
-  console.error('Unhandled error:', error);
-  process.exit(1);
-});
+// Run the main function
+main().catch(console.error);
