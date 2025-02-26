@@ -17,6 +17,7 @@ LocalLama MCP Server is designed to reduce token usage and costs by dynamically 
 
 - Defines rules that compare the cost of using the paid API against the cost (and potential quality trade-offs) of offloading to a local LLM
 - Includes configurable thresholds for when to offload
+- Uses preemptive routing based on benchmark data to make faster decisions without API calls
 
 ### API Integration & Configurability
 
@@ -27,6 +28,12 @@ LocalLama MCP Server is designed to reduce token usage and costs by dynamically 
 
 - Implements fallback mechanisms in case the paid API's data is unavailable or the local service fails
 - Includes robust logging and error handling strategies
+
+### Benchmarking System
+
+- Compares performance of local LLM models against paid API models
+- Measures response time, success rate, quality score, and token usage
+- Generates detailed reports for analysis and decision-making
 
 ## Installation
 
@@ -44,7 +51,13 @@ npm run build
 
 ## Configuration
 
-Create a `.env` file in the root directory with the following variables:
+Copy the `.env.example` file to create your own `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Then edit the `.env` file with your specific configuration:
 
 ```
 # Local LLM Endpoints
@@ -52,13 +65,24 @@ LM_STUDIO_ENDPOINT=http://localhost:1234/v1
 OLLAMA_ENDPOINT=http://localhost:11434/api
 
 # Configuration
-DEFAULT_LOCAL_MODEL=llama3
-TOKEN_THRESHOLD=1000
+DEFAULT_LOCAL_MODEL=qwen2.5-coder-3b-instruct
+TOKEN_THRESHOLD=1500
 COST_THRESHOLD=0.02
 QUALITY_THRESHOLD=0.7
 
+# Benchmark Configuration
+BENCHMARK_RUNS_PER_TASK=3
+BENCHMARK_PARALLEL=false
+BENCHMARK_MAX_PARALLEL_TASKS=2
+BENCHMARK_TASK_TIMEOUT=60000
+BENCHMARK_SAVE_RESULTS=true
+BENCHMARK_RESULTS_PATH=./benchmark-results
+
+# API Keys (replace with your actual keys)
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+
 # Logging
-LOG_LEVEL=info
+LOG_LEVEL=debug
 ```
 
 ## Usage
@@ -86,6 +110,32 @@ To use this MCP Server with Cline.Bot, add it to your Cline MCP settings:
 }
 ```
 
+### Running Benchmarks
+
+The project includes a comprehensive benchmarking system to compare local LLM models against paid API models:
+
+```bash
+# Run a simple benchmark
+node run-benchmarks.js
+
+# Run a comprehensive benchmark across multiple models
+node run-benchmarks.js comprehensive
+```
+
+Benchmark results are stored in the `benchmark-results` directory and include:
+- Individual task performance metrics in JSON format
+- Summary reports in JSON and Markdown formats
+- Comprehensive analysis of model performance
+
+## Benchmark Results
+
+The repository includes benchmark results that provide valuable insights into the performance of different models. These results:
+
+1. Do not contain any sensitive API keys or personal information
+2. Provide performance metrics that help inform the decision engine
+3. Include response times, success rates, quality scores, and token usage statistics
+4. Are useful for anyone who wants to understand the trade-offs between local LLMs and paid APIs
+
 ## Development
 
 ### Running in Development Mode
@@ -99,6 +149,12 @@ npm run dev
 ```bash
 npm test
 ```
+
+## Security Notes
+
+- The `.gitignore` file is configured to prevent sensitive data from being committed to the repository
+- API keys and other secrets should be stored in your `.env` file, which is excluded from version control
+- Benchmark results included in the repository do not contain sensitive information
 
 ## License
 

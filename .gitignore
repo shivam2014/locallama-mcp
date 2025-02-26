@@ -1,4 +1,4 @@
-# Cline/Roo specific
+# Cline/Roo specific - IDE and tool configuration
 .clinerules-architect
 .clinerules-ask
 .clinerules-code
@@ -13,10 +13,17 @@ dist/
 build/
 *.tsbuildinfo
 
-# Environment variables
+# Environment variables and secrets - NEVER commit these to GitHub
 .env
 .env.local
 .env.*.local
+*.pem
+*.key
+*_key
+*_secret
+*_token
+*_password
+*credentials*
 
 # Logs
 logs
@@ -26,8 +33,9 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
-# Coverage directory used by tools like istanbul
+# Testing and coverage
 coverage/
+.nyc_output/
 
 # Editor directories and files
 .idea/
@@ -38,3 +46,9 @@ coverage/
 *.sln
 *.sw?
 .DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
