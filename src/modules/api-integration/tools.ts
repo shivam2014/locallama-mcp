@@ -288,6 +288,14 @@ export function setupToolHandlers(server: Server): void {
                       type: 'number',
                       description: 'The complexity of the task (0-1)',
                     },
+                    local_model: {
+                      type: 'string',
+                      description: 'The local model to use (optional)',
+                    },
+                    paid_model: {
+                      type: 'string',
+                      description: 'The paid model to use (optional)',
+                    },
                   },
                   required: ['task_id', 'task', 'context_length'],
                 },
@@ -681,6 +689,8 @@ export function setupToolHandlers(server: Server): void {
             contextLength: task.context_length,
             expectedOutputLength: task.expected_output_length || 0,
             complexity: task.complexity || 0.5,
+            localModel: task.local_model,
+            paidModel: task.paid_model,
           }));
           
           // Run benchmarks for free models
