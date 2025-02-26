@@ -1,0 +1,31 @@
+{
+  "taskId": "simple-function",
+  "task": "Write a JavaScript function that calculates the factorial of a number.",
+  "contextLength": 200,
+  "outputLength": 301,
+  "complexity": 0.2,
+  "local": {
+    "model": "qwen2.5-coder-3b-instruct",
+    "timeTaken": 3739.3333333333335,
+    "successRate": 1,
+    "qualityScore": 0.8500000000000001,
+    "tokenUsage": {
+      "prompt": 31,
+      "completion": 301,
+      "total": 332
+    }
+  },
+  "paid": {
+    "model": "gpt-3.5-turbo",
+    "timeTaken": 0,
+    "successRate": 0,
+    "qualityScore": 0,
+    "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "total": 0
+    },
+    "cost": 0
+  },
+  "timestamp": "2025-02-26T06:09:34.754Z"
+}

@@ -299,6 +299,7 @@ async function runModelBenchmark(
     completion: number;
     total: number;
   };
+  output?: string;
 }> {
   // Initialize results
   let totalTimeTaken = 0;
@@ -309,6 +310,7 @@ async function runModelBenchmark(
     completion: 0,
     total: 0,
   };
+  let output = '';
   
   // Run multiple times to get average performance
   for (let i = 0; i < config.runsPerTask; i++) {
@@ -332,6 +334,9 @@ async function runModelBenchmark(
         qualityScore = evaluateQuality(task, response.text || '');
         promptTokens = response.usage?.prompt_tokens || contextLength;
         completionTokens = response.usage?.completion_tokens || expectedOutputLength;
+        if (success) {
+          output = response.text || '';
+        }
       } else if (model.provider === 'ollama') {
         // Call Ollama API
         response = await callOllamaApi(model.id, task, config.taskTimeout);
@@ -339,6 +344,9 @@ async function runModelBenchmark(
         qualityScore = evaluateQuality(task, response.text || '');
         promptTokens = response.usage?.prompt_tokens || contextLength;
         completionTokens = response.usage?.completion_tokens || expectedOutputLength;
+        if (success) {
+          output = response.text || '';
+        }
       } else if (model.provider === 'openai') {
         // Call OpenAI API (simulated for now)
         response = await simulateOpenAiApi(task, config.taskTimeout);
@@ -346,6 +354,9 @@ async function runModelBenchmark(
         qualityScore = evaluateQuality(task, response.text || '');
         promptTokens = response.usage?.prompt_tokens || contextLength;
         completionTokens = response.usage?.completion_tokens || expectedOutputLength;
+        if (success) {
+          output = response.text || '';
+        }
       } else {
         // Simulate other APIs
         response = await simulateGenericApi(task, config.taskTimeout);
@@ -353,6 +364,9 @@ async function runModelBenchmark(
         qualityScore = evaluateQuality(task, response.text || '');
         promptTokens = contextLength;
         completionTokens = expectedOutputLength;
+        if (success) {
+          output = response.text || '';
+        }
       }
       
       const endTime = Date.now();
@@ -388,6 +402,7 @@ async function runModelBenchmark(
     successRate,
     qualityScore: avgQualityScore,
     tokenUsage,
+    output
   };
 }
 
@@ -498,10 +513,10 @@ function generateSummary(results: BenchmarkResult[]): BenchmarkSummary {
  * Run a benchmark for a single task
  */
 async function benchmarkTask(
-  params: BenchmarkTaskParams,
+  params: BenchmarkTaskParams & { skipPaidModel?: boolean },
   config: BenchmarkConfig = defaultConfig
 ): Promise<BenchmarkResult> {
-  const { taskId, task, contextLength, expectedOutputLength, complexity } = params;
+  const { taskId, task, contextLength, expectedOutputLength, complexity, skipPaidModel } = params;
   
   logger.info(`Benchmarking task ${taskId}: ${task.substring(0, 50)}...`);
   
@@ -538,6 +553,7 @@ async function benchmarkTask(
         completion: 0,
         total: 0,
       },
+      output: '',
     },
     paid: {
       model: paidModel?.id || 'gpt-3.5-turbo',
@@ -550,6 +566,7 @@ async function benchmarkTask(
         total: 0,
       },
       cost: 0,
+      output: '',
     },
     timestamp: new Date().toISOString(),
   };
@@ -569,10 +586,11 @@ async function benchmarkTask(
   result.local.successRate = localResults.successRate;
   result.local.qualityScore = localResults.qualityScore;
   result.local.tokenUsage = localResults.tokenUsage;
+  result.local.output = localResults.output || '';
   result.outputLength = localResults.tokenUsage.completion;
   
-  // Run benchmark for paid model if available
-  if (paidModel) {
+  // Run benchmark for paid model if available and not skipped
+  if (paidModel && !skipPaidModel) {
     logger.info(`Benchmarking paid model: ${paidModel.id}`);
     const paidResults = await runModelBenchmark(
       'paid',
@@ -587,6 +605,7 @@ async function benchmarkTask(
     result.paid.successRate = paidResults.successRate;
     result.paid.qualityScore = paidResults.qualityScore;
     result.paid.tokenUsage = paidResults.tokenUsage;
+    result.paid.output = paidResults.output || '';
     result.paid.cost = paidResults.tokenUsage.prompt * (paidModel.costPerToken?.prompt || 0) + 
                        paidResults.tokenUsage.completion * (paidModel.costPerToken?.completion || 0);
     

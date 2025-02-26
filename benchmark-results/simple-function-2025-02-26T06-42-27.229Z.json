@@ -1,0 +1,33 @@
+{
+  "taskId": "simple-function",
+  "task": "Write a JavaScript function that calculates the factorial of a number.",
+  "contextLength": 200,
+  "outputLength": 273,
+  "complexity": 0.2,
+  "local": {
+    "model": "qwen2.5-7b-instruct-1m",
+    "timeTaken": 31026,
+    "successRate": 1,
+    "qualityScore": 0.8500000000000001,
+    "tokenUsage": {
+      "prompt": 31,
+      "completion": 273,
+      "total": 304
+    },
+    "output": "Certainly! Below is a JavaScript function that calculates the factorial of a given number using a simple iterative approach:\n\n```javascript\nfunction factorial(n) {\n    if (n < 0) {\n        return undefined; // Factorial is not defined for negative numbers\n    }\n    \n    let result = 1;\n    for (let i = 2; i <= n; i++) {\n        result *= i;\n    }\n    return result;\n}\n\n// Example usage:\nconsole.log(factorial(5)); // Output: 120\n```\n\nThis function first checks if the input number `n` is negative, in which case it returns `undefined` because factorials for negative numbers are not defined. For non-negative numbers, it initializes a variable `result` to 1 and then iteratively multiplies it by each integer up to `n`, effectively calculating the factorial.\n\nAlternatively, you can use a recursive approach:\n\n```javascript\nfunction factorialRecursive(n) {\n    if (n < 0) {\n        return undefined; // Factorial is not defined for negative numbers\n    }\n    if (n === 0 || n === 1) {\n        return 1;\n    }\n    return n * factorialRecursive(n - 1);\n}\n\n// Example usage:\nconsole.log(factorialRecursive(5)); // Output: 120\n```\n\nThis recursive function calls itself with a decremented value of `n` until it reaches the base case of `n` being 0 or 1, at which point it returns 1."
+  },
+  "paid": {
+    "model": "gpt-3.5-turbo",
+    "timeTaken": 0,
+    "successRate": 0,
+    "qualityScore": 0,
+    "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "total": 0
+    },
+    "cost": 0,
+    "output": ""
+  },
+  "timestamp": "2025-02-26T06:40:54.150Z"
+}

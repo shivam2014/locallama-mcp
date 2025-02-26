@@ -1,0 +1,50 @@
+{
+  "data": [
+    {
+      "id": "qwen2.5-coder-3b-instruct",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "stable-code-instruct-3b",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "tinycodellama-1.3b-5k",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "text-embedding-nomic-embed-text-v1.5",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "qwen2.5-coder-1.5b-instruct",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-1.5b",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "qwen2.5-7b-instruct-1m",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-7b",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "deepseek-r1-distill-llama-8b-abliterated",
+      "object": "model",
+      "owned_by": "organization_owner"
+    }
+  ],
+  "object": "list"
+}

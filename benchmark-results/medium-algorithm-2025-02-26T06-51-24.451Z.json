@@ -1,0 +1,33 @@
+{
+  "taskId": "medium-algorithm",
+  "task": "Implement a binary search algorithm in JavaScript with proper error handling and edge cases.",
+  "contextLength": 500,
+  "outputLength": 350,
+  "complexity": 0.5,
+  "local": {
+    "model": "tinycodellama-1.3b-5k",
+    "timeTaken": 3482.6666666666665,
+    "successRate": 1,
+    "qualityScore": 0.8126811594202898,
+    "tokenUsage": {
+      "prompt": 53,
+      "completion": 350,
+      "total": 403
+    },
+    "output": "Implement aWSA WebSearch query that takes no argument of the method or url as input and returns an HTTP response that contains the following additional information:\n- Title, description, content_type, content_length\n- QueryString, query_string, URL, user_agent, date\n- Datetime, date, url\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- HTTP method\n- Http version\n- Version number\n- Method description\n- URL parameters\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- Http version\n- Version number\n- Method description\n- URL parameters\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- HTTP method\n- Http version\n- Version number\n- Method description\n- URL parameters\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- HTTP method\n- Version number\n- Method description\n- URL parameters\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- HTTP method\n- Version number\n- Method description\n- URL parameters\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- HTTP method\n- Version number\n- Method description\n- URL parameters\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP and port\n- Datetime & date\n- Number of bytes\n- Links\n- UserAgent, UserAgent_1\n- Type\n- Hostname, IP\n- Datetime & date\n- Datetime\n- Number of requests: 2008\n- URL parameters\n- HTTP method\n- Datetime\n- Number of bytes\n- Links\n- UserAgent and UserAgent type\n- Links\n- User name, email address and the response code.\n- Status: 200, 402, 201 or 50, 76, 98\n- Datetime & text\n- Links\n- Number of bytes\n- Date\n- Type: (2) - URL\n- Type: URL\n- Email: <email>\n- Date: date, Date\n- Number: Number\n- Date: Number, date and text\n- Number: 201, 1 (if not a)\n    - Datetime\n- Type\n- Link\n\n#################################################################"
+  },
+  "paid": {
+    "model": "gpt-3.5-turbo",
+    "timeTaken": 0,
+    "successRate": 0,
+    "qualityScore": 0,
+    "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "total": 0
+    },
+    "cost": 0,
+    "output": ""
+  },
+  "timestamp": "2025-02-26T06:51:14.002Z"
+}

@@ -24,6 +24,9 @@ export const config = {
   costThreshold: parseFloat(process.env.COST_THRESHOLD || '0.02'),
   qualityThreshold: parseFloat(process.env.QUALITY_THRESHOLD || '0.7'),
   
+  // API Keys
+  openRouterApiKey: process.env.OPENROUTER_API_KEY,
+  
   // Benchmark configuration
   benchmark: {
     runsPerTask: parseInt(process.env.BENCHMARK_RUNS_PER_TASK || '3', 10),

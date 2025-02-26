@@ -30,6 +30,32 @@ export interface ApiUsage {
 }
 
 /**
+ * Model performance profile based on benchmark results
+ */
+export interface ModelPerformanceProfile {
+  /** Quality score for simple tasks (0-1) */
+  simpleTaskQuality: number;
+  
+  /** Quality score for medium complexity tasks (0-1) */
+  mediumTaskQuality: number;
+  
+  /** Quality score for complex tasks (0-1) */
+  complexTaskQuality: number;
+  
+  /** Average response time in milliseconds */
+  avgResponseTime: number;
+  
+  /** Success rate (0-1) */
+  successRate: number;
+  
+  /** Maximum context window size in tokens */
+  contextWindow: number;
+  
+  /** Recommended complexity range [min, max] */
+  recommendedComplexityRange: [number, number];
+}
+
+/**
  * Model information
  */
 export interface Model {
@@ -185,6 +211,14 @@ export interface RoutingDecision {
       /** Weight assigned to this factor */
       weight?: number;
     };
+    
+    /** Benchmark performance */
+    benchmarkPerformance?: {
+      /** Whether benchmark performance was a factor in the decision */
+      wasFactor: boolean;
+      /** Weight assigned to this factor */
+      weight?: number;
+    };
   };
   
   /** Confidence in the decision (0-1) */
@@ -200,6 +234,9 @@ export interface RoutingDecision {
     /** Score for paid provider (0-1) */
     paid: number;
   };
+  
+  /** Whether this was a preemptive decision (made without API calls) */
+  preemptive?: boolean;
 }
 
 /**

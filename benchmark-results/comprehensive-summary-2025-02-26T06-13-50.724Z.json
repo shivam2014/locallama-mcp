@@ -1,0 +1,54 @@
+{
+  "qwen2.5-coder-3b-instruct": {
+    "gpt-3.5-turbo": {
+      "tasks": 6,
+      "localAvgTime": 6854.722222222223,
+      "localAvgSuccessRate": 1,
+      "localAvgQualityScore": 0.8450000000000001,
+      "paidAvgTime": 0,
+      "paidAvgSuccessRate": 0,
+      "paidAvgQualityScore": 0,
+      "totalCostSavings": 0
+    },
+    "gpt-4o": {
+      "tasks": 6,
+      "localAvgTime": 7374.222222222223,
+      "localAvgSuccessRate": 1,
+      "localAvgQualityScore": 0.85,
+      "paidAvgTime": 0,
+      "paidAvgSuccessRate": 0,
+      "paidAvgQualityScore": 0,
+      "totalCostSavings": 0
+    },
+    "claude-3-sonnet-20240229": {
+      "tasks": 6,
+      "localAvgTime": 7390.277777777778,
+      "localAvgSuccessRate": 1,
+      "localAvgQualityScore": 0.85,
+      "paidAvgTime": 0,
+      "paidAvgSuccessRate": 0,
+      "paidAvgQualityScore": 0,
+      "totalCostSavings": 0
+    },
+    "gemini-1.5-pro": {
+      "tasks": 6,
+      "localAvgTime": 7369.166666666667,
+      "localAvgSuccessRate": 1,
+      "localAvgQualityScore": 0.8450000000000001,
+      "paidAvgTime": 0,
+      "paidAvgSuccessRate": 0,
+      "paidAvgQualityScore": 0,
+      "totalCostSavings": 0
+    },
+    "mistral-large-latest": {
+      "tasks": 6,
+      "localAvgTime": 6846.166666666667,
+      "localAvgSuccessRate": 1,
+      "localAvgQualityScore": 0.8450000000000001,
+      "paidAvgTime": 0,
+      "paidAvgSuccessRate": 0,
+      "paidAvgQualityScore": 0,
+      "totalCostSavings": 0
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "taskId": "complex-design-pattern",
+  "task": "Implement a TypeScript class that uses the Observer design pattern for a pub/sub event system with strong typing.",
+  "contextLength": 800,
+  "outputLength": 488,
+  "complexity": 0.8,
+  "local": {
+    "model": "qwen2.5-coder-3b-instruct",
+    "timeTaken": 6746.666666666667,
+    "successRate": 1,
+    "qualityScore": 0.8500000000000001,
+    "tokenUsage": {
+      "prompt": 39,
+      "completion": 488,
+      "total": 527
+    },
+    "output": "Here's an example implementation of a Pub/Sub (Publish-Subscribe) event system in TypeScript using the Observer design pattern:\n\n```typescript\n// Define a type for event data\ntype EventData = any;\n\n// The Subject class that manages subscriptions and notifications\nclass Publisher<T extends EventData> {\n  private subscribers: { [key: string]: ((data: T) => void)[] } = {};\n\n  // Subscribe to an event by providing an event name and a callback function\n  subscribe(eventName: string, callback: (data: T) => void): void {\n    if (!this.subscribers[eventName]) {\n      this.subscribers[eventName] = [];\n    }\n    this.subscribers[eventName].push(callback);\n  }\n\n  // Unsubscribe from an event by providing the event name and the callback function\n  unsubscribe(eventName: string, callback: (data: T) => void): void {\n    if (!this.subscribers[eventName]) return;\n    const index = this.subscribers[eventName].indexOf(callback);\n    if (index !== -1) {\n      this.subscribers[eventName].splice(index, 1);\n    }\n  }\n\n  // Publish an event by providing the event name and data\n  publish(eventName: string, data: T): void {\n    if (!this.subscribers[eventName]) return;\n    for (const callback of this.subscribers[eventName]) {\n      callback(data);\n    }\n  }\n}\n\n// Example usage\nclass EventPublisher extends Publisher<number> {}\n\nconst publisher = new EventPublisher();\n\npublisher.subscribe('myEvent', (data) => {\n  console.log(`Received event: ${data}`);\n});\n\npublisher.publish('myEvent', 123); // Output: Received event: 123\n\npublisher.unsubscribe('myEvent', (data) => {\n  console.log(`Received event: ${data}`);\n});\n\npublisher.publish('myEvent', 456); // No output\n```\n\n### Key Features:\n\n- **Type Safety**: The `Publisher` class is generic, allowing you to specify the type of data that can be sent with each event.\n- **Strong Typing**: The `EventData` type allows for flexible data types, making it easy to extend and use in different contexts.\n- **Event Subscription/Unsubscription**: You can easily subscribe and unsubscribe from events using the `subscribe` and `unsubscribe` methods.\n- **Event Publishing**: Use the `publish` method to send notifications to all subscribed listeners.\n\nThis implementation provides a clean and type-safe way to manage event subscriptions and notifications, which is useful in applications that require decoupled communication between different parts of an application."
+  },
+  "paid": {
+    "model": "gpt-3.5-turbo",
+    "timeTaken": 0,
+    "successRate": 0,
+    "qualityScore": 0,
+    "tokenUsage": {
+      "prompt": 0,
+      "completion": 0,
+      "total": 0
+    },
+    "cost": 0,
+    "output": ""
+  },
+  "timestamp": "2025-02-26T07:05:11.385Z"
+}

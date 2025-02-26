@@ -40,6 +40,9 @@ export interface BenchmarkResult {
       /** Total number of tokens */
       total: number;
     };
+    
+    /** Model output text */
+    output?: string;
   };
   
   /** Paid API performance */
@@ -68,6 +71,9 @@ export interface BenchmarkResult {
     
     /** Cost in USD */
     cost: number;
+    
+    /** Model output text */
+    output?: string;
   };
   
   /** Timestamp of the benchmark */
@@ -180,6 +186,9 @@ export interface BenchmarkTaskParams {
   
   /** Paid model to use */
   paidModel?: string;
+  
+  /** Skip paid model benchmarking */
+  skipPaidModel?: boolean;
 }
 
 /**
