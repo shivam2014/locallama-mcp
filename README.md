@@ -85,6 +85,29 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 LOG_LEVEL=debug
 ```
 
+### Environment Variables Explained
+
+- **Local LLM Endpoints**
+  - `LM_STUDIO_ENDPOINT`: URL where your LM Studio instance is running
+  - `OLLAMA_ENDPOINT`: URL where your Ollama instance is running
+
+- **Configuration**
+  - `DEFAULT_LOCAL_MODEL`: The local LLM model to use when offloading tasks
+  - `TOKEN_THRESHOLD`: Maximum token count before considering offloading to local LLM
+  - `COST_THRESHOLD`: Cost threshold (in USD) that triggers local LLM usage
+  - `QUALITY_THRESHOLD`: Quality score below which to use paid APIs regardless of cost
+
+- **API Keys**
+  - `OPENROUTER_API_KEY`: Your OpenRouter API key for accessing various LLM services
+
+### Environment Variables for Cline.Bot and Roo Code
+
+When integrating with Cline.Bot or Roo Code, you can pass these environment variables directly:
+
+- For **simple configuration**: Use the basic env variables in your MCP setup
+- For **advanced routing**: Configure thresholds to fine-tune when local vs. cloud models are used
+- For **model selection**: Specify which local models should handle different types of requests
+
 ## Usage
 
 ### Starting the Server
@@ -100,10 +123,18 @@ To use this MCP Server with Cline.Bot, add it to your Cline MCP settings:
 ```json
 {
   "mcpServers": {
-    "locallama": {
+    "locallama-mcp": {
       "command": "node",
-      "args": ["/path/to/locallama-mcp/dist/index.js"],
-      "env": {},
+      "args": ["/path/to/locallama-mcp"],
+      "env": {
+        "LM_STUDIO_ENDPOINT": "http://localhost:1234/v1",
+        "OLLAMA_ENDPOINT": "http://localhost:11434/api",
+        "DEFAULT_LOCAL_MODEL": "qwen2.5-coder-3b-instruct",
+        "TOKEN_THRESHOLD": "1500",
+        "COST_THRESHOLD": "0.02",
+        "QUALITY_THRESHOLD": "0.07",
+        "OPENROUTER_API_KEY": "your_openrouter_api_key_here"
+      },
       "disabled": false
     }
   }
