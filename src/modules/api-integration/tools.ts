@@ -50,6 +50,41 @@ export function setupToolHandlers(server: Server): void {
                 enum: ['speed', 'cost', 'quality'],
                 description: 'The priority for this task',
               },
+              preemptive: {
+                type: 'boolean',
+                description: 'Whether to use preemptive routing (faster but less accurate)',
+              },
+            },
+            required: ['task', 'context_length'],
+          },
+        },
+        {
+          name: 'preemptive_route_task',
+          description: 'Quickly route a coding task without making API calls (faster but less accurate)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task: {
+                type: 'string',
+                description: 'The coding task to route',
+              },
+              context_length: {
+                type: 'number',
+                description: 'The length of the context in tokens',
+              },
+              expected_output_length: {
+                type: 'number',
+                description: 'The expected length of the output in tokens',
+              },
+              complexity: {
+                type: 'number',
+                description: 'The complexity of the task (0-1)',
+              },
+              priority: {
+                type: 'string',
+                enum: ['speed', 'cost', 'quality'],
+                description: 'The priority for this task',
+              },
             },
             required: ['task', 'context_length'],
           },
@@ -206,7 +241,28 @@ export function setupToolHandlers(server: Server): void {
             };
           }
           
-          // Get routing decision
+          // Check if preemptive routing is requested
+          if (args.preemptive) {
+            // Use preemptive routing for faster decision
+            const decision = decisionEngine.preemptiveRouting({
+              task: args.task as string,
+              contextLength: (args.context_length as number) || 0,
+              expectedOutputLength: (args.expected_output_length as number) || 0,
+              complexity: (args.complexity as number) || 0.5,
+              priority: (args.priority as 'speed' | 'cost' | 'quality') || 'quality',
+            });
+            
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(decision, null, 2),
+                },
+              ],
+            };
+          }
+          
+          // Get full routing decision
           const decision = await decisionEngine.routeTask({
             task: args.task as string,
             contextLength: (args.context_length as number) || 0,
@@ -230,6 +286,47 @@ export function setupToolHandlers(server: Server): void {
               {
                 type: 'text',
                 text: `Error routing task: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+      
+      case 'preemptive_route_task': {
+        try {
+          // Validate arguments
+          if (!args.task) {
+            return {
+              content: [{ type: 'text', text: 'Missing required argument: task' }],
+              isError: true,
+            };
+          }
+          
+          // Use preemptive routing for faster decision
+          const decision = decisionEngine.preemptiveRouting({
+            task: args.task as string,
+            contextLength: (args.context_length as number) || 0,
+            expectedOutputLength: (args.expected_output_length as number) || 0,
+            complexity: (args.complexity as number) || 0.5,
+            priority: (args.priority as 'speed' | 'cost' | 'quality') || 'quality',
+          });
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(decision, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          logger.error('Error in preemptive routing:', error);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error in preemptive routing: ${error instanceof Error ? error.message : String(error)}`,
               },
             ],
             isError: true,
