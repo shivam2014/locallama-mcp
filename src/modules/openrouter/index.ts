@@ -144,8 +144,13 @@ export const openRouterModule = {
         const updatedModels: Record<string, OpenRouterModel> = {};
         
         for (const model of models) {
-          // Check if the model is free
-          const isFree = model.pricing?.prompt === 0 && model.pricing?.completion === 0;
+          // Check if the model is free - using a more robust approach
+          const promptPrice = parseFloat(String(model.pricing?.prompt || "0"));
+          const completionPrice = parseFloat(String(model.pricing?.completion || "0"));
+          
+          // Adding epsilon comparison for floating point precision
+          const EPSILON = 0.00000000001; // Small threshold to handle floating-point precision
+          const isFree = promptPrice < EPSILON && completionPrice < EPSILON;
           
           // If the model is free, add it to the list
           if (isFree) {
