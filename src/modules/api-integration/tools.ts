@@ -42,15 +42,15 @@ export function setupToolHandlers(server: Server): void {
               description: 'The coding task to route',
             },
             context_length: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The length of the context in tokens',
             },
             expected_output_length: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The expected length of the output in tokens',
             },
             complexity: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The complexity of the task (0-1)',
             },
             priority: {
@@ -77,15 +77,15 @@ export function setupToolHandlers(server: Server): void {
               description: 'The coding task to route',
             },
             context_length: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The length of the context in tokens',
             },
             expected_output_length: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The expected length of the output in tokens',
             },
             complexity: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The complexity of the task (0-1)',
             },
             priority: {
@@ -104,11 +104,11 @@ export function setupToolHandlers(server: Server): void {
           type: 'object',
           properties: {
             context_length: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The length of the context in tokens',
             },
             expected_output_length: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The expected length of the output in tokens',
             },
             model: {
@@ -134,15 +134,15 @@ export function setupToolHandlers(server: Server): void {
               description: 'The coding task to benchmark',
             },
             context_length: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The length of the context in tokens',
             },
             expected_output_length: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The expected length of the output in tokens',
             },
             complexity: {
-              type: 'number',
+              type: 'number', // Corrected type
               description: 'The complexity of the task (0-1)',
             },
             local_model: {
@@ -181,15 +181,15 @@ export function setupToolHandlers(server: Server): void {
                     description: 'The coding task to benchmark',
                   },
                   context_length: {
-                    type: 'number',
+                    type: 'number', // Corrected type
                     description: 'The length of the context in tokens',
                   },
                   expected_output_length: {
-                    type: 'number',
+                    type: 'number', // Corrected type
                     description: 'The expected length of the output in tokens',
                   },
                   complexity: {
-                    type: 'number',
+                    type: 'number', // Corrected type
                     description: 'The complexity of the task (0-1)',
                   },
                   local_model: {
@@ -239,6 +239,19 @@ export function setupToolHandlers(server: Server): void {
               context_length: {
                 type: 'number',
                 description: 'The length of the context in tokens',
+              },
+              expected_output_length: {
+                type: 'number',
+                description: 'The expected length of the output in tokens',
+              },
+              complexity: {
+                type: 'number',
+                description: 'The complexity of the task (0-1)',
+              },
+              priority: {
+                type: 'string',
+                enum: ['speed', 'cost', 'quality'],
+                description: 'The priority for this task',
               },
             },
             required: [],
