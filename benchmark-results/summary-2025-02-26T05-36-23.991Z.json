@@ -1,0 +1,34 @@
+{
+  "taskCount": 6,
+  "avgContextLength": 558.3333333333334,
+  "avgOutputLength": 79.66666666666667,
+  "avgComplexity": 0.55,
+  "local": {
+    "avgTimeTaken": 7489.944444444445,
+    "avgSuccessRate": 1,
+    "avgQualityScore": 0.85,
+    "totalTokenUsage": {
+      "prompt": 216,
+      "completion": 3471,
+      "total": 3687
+    }
+  },
+  "paid": {
+    "avgTimeTaken": 1124.0555555555557,
+    "avgSuccessRate": 0.8888888888888888,
+    "avgQualityScore": 0.6797906275465134,
+    "totalTokenUsage": {
+      "prompt": 403,
+      "completion": 478,
+      "total": 881
+    },
+    "totalCost": 0.001359
+  },
+  "comparison": {
+    "timeRatio": 6.663322295260219,
+    "successRateDiff": 0.11111111111111116,
+    "qualityScoreDiff": 0.17020937245348655,
+    "costSavings": 0.001359
+  },
+  "timestamp": "2025-02-26T05:36:23.990Z"
+}

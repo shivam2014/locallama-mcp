@@ -1,0 +1,31 @@
+{
+  "taskId": "complex-design-pattern",
+  "task": "Implement a TypeScript class that uses the Observer design pattern for a pub/sub event system with strong typing.",
+  "contextLength": 800,
+  "outputLength": 24,
+  "complexity": 0.8,
+  "local": {
+    "model": "qwen2.5-coder-3b-instruct",
+    "timeTaken": 6703.333333333333,
+    "successRate": 1,
+    "qualityScore": 0.8500000000000001,
+    "tokenUsage": {
+      "prompt": 39,
+      "completion": 529,
+      "total": 568
+    }
+  },
+  "paid": {
+    "model": "gpt-3.5-turbo",
+    "timeTaken": 957.6666666666666,
+    "successRate": 1,
+    "qualityScore": 0.7007079646017699,
+    "tokenUsage": {
+      "prompt": 29,
+      "completion": 24,
+      "total": 53
+    },
+    "cost": 0.000077
+  },
+  "timestamp": "2025-02-26T05:35:21.480Z"
+}
