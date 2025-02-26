@@ -1,13 +1,12 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 // Load environment variables from .env file
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, '..', '..');
+// Determine root directory in a way that works with both runtime and tests
+// Use process.cwd() which is compatible with both ESM and CommonJS
+const rootDir = process.cwd();
 
 /**
  * Configuration for the LocalLama MCP Server
