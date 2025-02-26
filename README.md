@@ -123,7 +123,7 @@ To use this MCP Server with Cline.Bot, add it to your Cline MCP settings:
 ```json
 {
   "mcpServers": {
-    "locallama-mcp": {
+    "locallama": {
       "command": "node",
       "args": ["/path/to/locallama-mcp"],
       "env": {
