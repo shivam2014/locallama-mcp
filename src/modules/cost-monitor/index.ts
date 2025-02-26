@@ -2,6 +2,7 @@ import axios from 'axios';
 import { config } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
 import { ApiUsage, CostEstimate, Model } from '../../types/index.js';
+import { openRouterModule } from '../openrouter/index.js';
 
 /**
  * Cost & Token Monitoring Module
@@ -177,6 +178,27 @@ export const costMonitor = {
       logger.warn('Failed to get models from Ollama:', error);
     }
     
+    // Try to get models from OpenRouter
+    try {
+      // Only try to get OpenRouter models if API key is configured
+      if (config.openRouterApiKey) {
+        // Initialize the OpenRouter module if needed
+        if (Object.keys(openRouterModule.modelTracking.models).length === 0) {
+          await openRouterModule.initialize();
+        }
+        
+        // Get all models from OpenRouter
+        const openRouterModels = await openRouterModule.getAvailableModels();
+        
+        // Add the models to our list
+        models.push(...openRouterModels);
+        
+        logger.debug(`Added ${openRouterModels.length} models from OpenRouter`);
+      }
+    } catch (error) {
+      logger.warn('Failed to get models from OpenRouter:', error);
+    }
+    
     // If no models were found, return some default models
     if (models.length === 0) {
       models.push({
@@ -199,6 +221,30 @@ export const costMonitor = {
   },
   
   /**
+   * Get free models from OpenRouter
+   */
+  async getFreeModels(): Promise<Model[]> {
+    logger.debug('Getting free models');
+    
+    try {
+      // Only try to get OpenRouter models if API key is configured
+      if (config.openRouterApiKey) {
+        // Initialize the OpenRouter module if needed
+        if (Object.keys(openRouterModule.modelTracking.models).length === 0) {
+          await openRouterModule.initialize();
+        }
+        
+        // Get free models from OpenRouter
+        return await openRouterModule.getFreeModels();
+      }
+    } catch (error) {
+      logger.warn('Failed to get free models from OpenRouter:', error);
+    }
+    
+    return [];
+  },
+  
+  /**
    * Estimate the cost for a task
    */
   async estimateCost(params: {
@@ -208,9 +254,6 @@ export const costMonitor = {
   }): Promise<CostEstimate> {
     const { contextLength, outputLength = 0, model } = params;
     logger.debug(`Estimating cost for task with context length ${contextLength} and output length ${outputLength}`);
-    
-    // This is a placeholder implementation
-    // In a real implementation, this would calculate the cost based on the model and token counts
     
     // For local models, the cost is always 0
     const localCost = {
@@ -222,8 +265,36 @@ export const costMonitor = {
     
     // For paid APIs, calculate the cost based on token counts
     // These are example rates for GPT-3.5-turbo
-    const promptCost = contextLength * 0.000001;
-    const completionCost = outputLength * 0.000002;
+    let promptCost = contextLength * 0.000001;
+    let completionCost = outputLength * 0.000002;
+    
+    // If a specific model was requested, try to get its actual cost
+    if (model) {
+      // Check if it's an OpenRouter model
+      if (config.openRouterApiKey && openRouterModule.modelTracking.models[model]) {
+        const openRouterModel = openRouterModule.modelTracking.models[model];
+        promptCost = contextLength * openRouterModel.costPerToken.prompt;
+        completionCost = outputLength * openRouterModel.costPerToken.completion;
+        
+        // If it's a free model, set costs to 0
+        if (openRouterModel.isFree) {
+          promptCost = 0;
+          completionCost = 0;
+        }
+      }
+    } else {
+      // If no specific model was requested, check if there are free models available
+      if (config.openRouterApiKey) {
+        const freeModels = await this.getFreeModels();
+        if (freeModels.length > 0) {
+          // We have free models available, so we can set the paid cost to 0
+          // This will make the recommendation favor the free models
+          promptCost = 0;
+          completionCost = 0;
+        }
+      }
+    }
+    
     const paidCost = {
       prompt: promptCost,
       completion: completionCost,

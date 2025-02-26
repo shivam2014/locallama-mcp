@@ -8,7 +8,16 @@ import {
 import { decisionEngine } from '../decision-engine/index.js';
 import { costMonitor } from '../cost-monitor/index.js';
 import { benchmarkModule } from '../benchmark/index.js';
+import { openRouterModule } from '../openrouter/index.js';
 import { logger } from '../../utils/logger.js';
+import { config } from '../../config/index.js';
+
+/**
+ * Check if OpenRouter API key is configured
+ */
+function isOpenRouterConfigured(): boolean {
+  return !!config.openRouterApiKey;
+}
 
 /**
  * Set up tool handlers for the MCP Server
@@ -21,11 +30,205 @@ export function setupToolHandlers(server: Server): void {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.debug('Listing available tools');
     
-    return {
-      tools: [
+    const tools = [
+      {
+        name: 'route_task',
+        description: 'Route a coding task to either a local LLM or a paid API based on cost and complexity',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task: {
+              type: 'string',
+              description: 'The coding task to route',
+            },
+            context_length: {
+              type: 'number',
+              description: 'The length of the context in tokens',
+            },
+            expected_output_length: {
+              type: 'number',
+              description: 'The expected length of the output in tokens',
+            },
+            complexity: {
+              type: 'number',
+              description: 'The complexity of the task (0-1)',
+            },
+            priority: {
+              type: 'string',
+              enum: ['speed', 'cost', 'quality'],
+              description: 'The priority for this task',
+            },
+            preemptive: {
+              type: 'boolean',
+              description: 'Whether to use preemptive routing (faster but less accurate)',
+            },
+          },
+          required: ['task', 'context_length'],
+        },
+      },
+      {
+        name: 'preemptive_route_task',
+        description: 'Quickly route a coding task without making API calls (faster but less accurate)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task: {
+              type: 'string',
+              description: 'The coding task to route',
+            },
+            context_length: {
+              type: 'number',
+              description: 'The length of the context in tokens',
+            },
+            expected_output_length: {
+              type: 'number',
+              description: 'The expected length of the output in tokens',
+            },
+            complexity: {
+              type: 'number',
+              description: 'The complexity of the task (0-1)',
+            },
+            priority: {
+              type: 'string',
+              enum: ['speed', 'cost', 'quality'],
+              description: 'The priority for this task',
+            },
+          },
+          required: ['task', 'context_length'],
+        },
+      },
+      {
+        name: 'get_cost_estimate',
+        description: 'Get an estimate of the cost for a task',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            context_length: {
+              type: 'number',
+              description: 'The length of the context in tokens',
+            },
+            expected_output_length: {
+              type: 'number',
+              description: 'The expected length of the output in tokens',
+            },
+            model: {
+              type: 'string',
+              description: 'The model to use (optional)',
+            },
+          },
+          required: ['context_length'],
+        },
+      },
+      {
+        name: 'benchmark_task',
+        description: 'Benchmark the performance of local LLMs vs paid APIs for a specific task',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task_id: {
+              type: 'string',
+              description: 'A unique identifier for the task',
+            },
+            task: {
+              type: 'string',
+              description: 'The coding task to benchmark',
+            },
+            context_length: {
+              type: 'number',
+              description: 'The length of the context in tokens',
+            },
+            expected_output_length: {
+              type: 'number',
+              description: 'The expected length of the output in tokens',
+            },
+            complexity: {
+              type: 'number',
+              description: 'The complexity of the task (0-1)',
+            },
+            local_model: {
+              type: 'string',
+              description: 'The local model to use (optional)',
+            },
+            paid_model: {
+              type: 'string',
+              description: 'The paid model to use (optional)',
+            },
+            runs_per_task: {
+              type: 'number',
+              description: 'Number of runs per task for more accurate results (optional)',
+            },
+          },
+          required: ['task_id', 'task', 'context_length'],
+        },
+      },
+      {
+        name: 'benchmark_tasks',
+        description: 'Benchmark the performance of local LLMs vs paid APIs for multiple tasks',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            tasks: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  task_id: {
+                    type: 'string',
+                    description: 'A unique identifier for the task',
+                  },
+                  task: {
+                    type: 'string',
+                    description: 'The coding task to benchmark',
+                  },
+                  context_length: {
+                    type: 'number',
+                    description: 'The length of the context in tokens',
+                  },
+                  expected_output_length: {
+                    type: 'number',
+                    description: 'The expected length of the output in tokens',
+                  },
+                  complexity: {
+                    type: 'number',
+                    description: 'The complexity of the task (0-1)',
+                  },
+                  local_model: {
+                    type: 'string',
+                    description: 'The local model to use (optional)',
+                  },
+                  paid_model: {
+                    type: 'string',
+                    description: 'The paid model to use (optional)',
+                  },
+                },
+                required: ['task_id', 'task', 'context_length'],
+              },
+              description: 'Array of tasks to benchmark',
+            },
+            runs_per_task: {
+              type: 'number',
+              description: 'Number of runs per task for more accurate results (optional)',
+            },
+            parallel: {
+              type: 'boolean',
+              description: 'Whether to run tasks in parallel (optional)',
+            },
+            max_parallel_tasks: {
+              type: 'number',
+              description: 'Maximum number of parallel tasks (optional)',
+            },
+          },
+          required: ['tasks'],
+        },
+      }
+    ];
+    
+    // Add OpenRouter-specific tools if API key is configured
+    if (isOpenRouterConfigured()) {
+      tools.push(
         {
-          name: 'route_task',
-          description: 'Route a coding task to either a local LLM or a paid API based on cost and complexity',
+          name: 'get_free_models',
+          description: 'Get a list of free models available from OpenRouter',
           inputSchema: {
             type: 'object',
             properties: {
@@ -37,125 +240,13 @@ export function setupToolHandlers(server: Server): void {
                 type: 'number',
                 description: 'The length of the context in tokens',
               },
-              expected_output_length: {
-                type: 'number',
-                description: 'The expected length of the output in tokens',
-              },
-              complexity: {
-                type: 'number',
-                description: 'The complexity of the task (0-1)',
-              },
-              priority: {
-                type: 'string',
-                enum: ['speed', 'cost', 'quality'],
-                description: 'The priority for this task',
-              },
-              preemptive: {
-                type: 'boolean',
-                description: 'Whether to use preemptive routing (faster but less accurate)',
-              },
             },
-            required: ['task', 'context_length'],
+            required: [],
           },
         },
         {
-          name: 'preemptive_route_task',
-          description: 'Quickly route a coding task without making API calls (faster but less accurate)',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              task: {
-                type: 'string',
-                description: 'The coding task to route',
-              },
-              context_length: {
-                type: 'number',
-                description: 'The length of the context in tokens',
-              },
-              expected_output_length: {
-                type: 'number',
-                description: 'The expected length of the output in tokens',
-              },
-              complexity: {
-                type: 'number',
-                description: 'The complexity of the task (0-1)',
-              },
-              priority: {
-                type: 'string',
-                enum: ['speed', 'cost', 'quality'],
-                description: 'The priority for this task',
-              },
-            },
-            required: ['task', 'context_length'],
-          },
-        },
-        {
-          name: 'get_cost_estimate',
-          description: 'Get an estimate of the cost for a task',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              context_length: {
-                type: 'number',
-                description: 'The length of the context in tokens',
-              },
-              expected_output_length: {
-                type: 'number',
-                description: 'The expected length of the output in tokens',
-              },
-              model: {
-                type: 'string',
-                description: 'The model to use (optional)',
-              },
-            },
-            required: ['context_length'],
-          },
-        },
-        {
-          name: 'benchmark_task',
-          description: 'Benchmark the performance of local LLMs vs paid APIs for a specific task',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              task_id: {
-                type: 'string',
-                description: 'A unique identifier for the task',
-              },
-              task: {
-                type: 'string',
-                description: 'The coding task to benchmark',
-              },
-              context_length: {
-                type: 'number',
-                description: 'The length of the context in tokens',
-              },
-              expected_output_length: {
-                type: 'number',
-                description: 'The expected length of the output in tokens',
-              },
-              complexity: {
-                type: 'number',
-                description: 'The complexity of the task (0-1)',
-              },
-              local_model: {
-                type: 'string',
-                description: 'The local model to use (optional)',
-              },
-              paid_model: {
-                type: 'string',
-                description: 'The paid model to use (optional)',
-              },
-              runs_per_task: {
-                type: 'number',
-                description: 'Number of runs per task for more accurate results (optional)',
-              },
-            },
-            required: ['task_id', 'task', 'context_length'],
-          },
-        },
-        {
-          name: 'benchmark_tasks',
-          description: 'Benchmark the performance of local LLMs vs paid APIs for multiple tasks',
+          name: 'benchmark_free_models',
+          description: 'Benchmark the performance of free models from OpenRouter',
           inputSchema: {
             type: 'object',
             properties: {
@@ -184,14 +275,6 @@ export function setupToolHandlers(server: Server): void {
                       type: 'number',
                       description: 'The complexity of the task (0-1)',
                     },
-                    local_model: {
-                      type: 'string',
-                      description: 'The local model to use (optional)',
-                    },
-                    paid_model: {
-                      type: 'string',
-                      description: 'The paid model to use (optional)',
-                    },
                   },
                   required: ['task_id', 'task', 'context_length'],
                 },
@@ -201,20 +284,44 @@ export function setupToolHandlers(server: Server): void {
                 type: 'number',
                 description: 'Number of runs per task for more accurate results (optional)',
               },
-              parallel: {
-                type: 'boolean',
-                description: 'Whether to run tasks in parallel (optional)',
-              },
-              max_parallel_tasks: {
-                type: 'number',
-                description: 'Maximum number of parallel tasks (optional)',
-              },
             },
             required: ['tasks'],
           },
         },
-      ],
-    };
+        {
+          name: 'update_prompting_strategy',
+          description: 'Update the prompting strategy for an OpenRouter model',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              model_id: {
+                type: 'string',
+                description: 'The ID of the model to update',
+              },
+              system_prompt: {
+                type: 'string',
+                description: 'The system prompt to use',
+              },
+              user_prompt: {
+                type: 'string',
+                description: 'The user prompt template to use',
+              },
+              assistant_prompt: {
+                type: 'string',
+                description: 'The assistant prompt template to use',
+              },
+              use_chat: {
+                type: 'boolean',
+                description: 'Whether to use chat format',
+              },
+            },
+            required: ['model_id'],
+          },
+        }
+      );
+    }
+    
+    return { tools };
   });
 
   // Handle tool calls
@@ -244,7 +351,7 @@ export function setupToolHandlers(server: Server): void {
           // Check if preemptive routing is requested
           if (args.preemptive) {
             // Use preemptive routing for faster decision
-            const decision = decisionEngine.preemptiveRouting({
+            const decision = await decisionEngine.preemptiveRouting({
               task: args.task as string,
               contextLength: (args.context_length as number) || 0,
               expectedOutputLength: (args.expected_output_length as number) || 0,
@@ -304,7 +411,7 @@ export function setupToolHandlers(server: Server): void {
           }
           
           // Use preemptive routing for faster decision
-          const decision = decisionEngine.preemptiveRouting({
+          const decision = await decisionEngine.preemptiveRouting({
             task: args.task as string,
             contextLength: (args.context_length as number) || 0,
             expectedOutputLength: (args.expected_output_length as number) || 0,
@@ -483,6 +590,162 @@ export function setupToolHandlers(server: Server): void {
               {
                 type: 'text',
                 text: `Error benchmarking tasks: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+      
+      case 'get_free_models': {
+        try {
+          // Check if OpenRouter API key is configured
+          if (!isOpenRouterConfigured()) {
+            return {
+              content: [{ type: 'text', text: 'OpenRouter API key not configured' }],
+              isError: true,
+            };
+          }
+          
+          // Initialize OpenRouter module if needed
+          if (Object.keys(openRouterModule.modelTracking.models).length === 0) {
+            await openRouterModule.initialize();
+          }
+          
+          // Get free models
+          const freeModels = await costMonitor.getFreeModels();
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(freeModels, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          logger.error('Error getting free models:', error);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error getting free models: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+      
+      case 'benchmark_free_models': {
+        try {
+          // Check if OpenRouter API key is configured
+          if (!isOpenRouterConfigured()) {
+            return {
+              content: [{ type: 'text', text: 'OpenRouter API key not configured' }],
+              isError: true,
+            };
+          }
+          
+          // Validate arguments
+          if (!args.tasks || !Array.isArray(args.tasks) || args.tasks.length === 0) {
+            return {
+              content: [{ type: 'text', text: 'Missing or invalid required argument: tasks' }],
+              isError: true,
+            };
+          }
+          
+          // Create benchmark config
+          const config = {
+            ...benchmarkModule.defaultConfig,
+            runsPerTask: (args.runs_per_task as number) || benchmarkModule.defaultConfig.runsPerTask,
+          };
+          
+          // Convert tasks to the correct format
+          const tasks = (args.tasks as any[]).map(task => ({
+            taskId: task.task_id,
+            task: task.task,
+            contextLength: task.context_length,
+            expectedOutputLength: task.expected_output_length || 0,
+            complexity: task.complexity || 0.5,
+          }));
+          
+          // Run benchmarks for free models
+          const summary = await benchmarkModule.benchmarkFreeModels(tasks, config);
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(summary, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          logger.error('Error benchmarking free models:', error);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error benchmarking free models: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+      
+      case 'update_prompting_strategy': {
+        try {
+          // Check if OpenRouter API key is configured
+          if (!isOpenRouterConfigured()) {
+            return {
+              content: [{ type: 'text', text: 'OpenRouter API key not configured' }],
+              isError: true,
+            };
+          }
+          
+          // Validate arguments
+          if (!args.model_id) {
+            return {
+              content: [{ type: 'text', text: 'Missing required argument: model_id' }],
+              isError: true,
+            };
+          }
+          
+          // Initialize OpenRouter module if needed
+          if (Object.keys(openRouterModule.modelTracking.models).length === 0) {
+            await openRouterModule.initialize();
+          }
+          
+          // Update prompting strategy
+          await openRouterModule.updatePromptingStrategy(
+            args.model_id as string,
+            {
+              systemPrompt: args.system_prompt as string,
+              userPrompt: args.user_prompt as string,
+              assistantPrompt: args.assistant_prompt as string,
+              useChat: args.use_chat as boolean,
+            },
+            1.0, // Success rate
+            1.0  // Quality score
+          );
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Successfully updated prompting strategy for model ${args.model_id}`,
+              },
+            ],
+          };
+        } catch (error) {
+          logger.error('Error updating prompting strategy:', error);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error updating prompting strategy: ${error instanceof Error ? error.message : String(error)}`,
               },
             ],
             isError: true,

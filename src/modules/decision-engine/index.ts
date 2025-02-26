@@ -1,5 +1,6 @@
 import { config } from '../../config/index.js';
 import { costMonitor } from '../cost-monitor/index.js';
+import { openRouterModule } from '../openrouter/index.js';
 import { logger } from '../../utils/logger.js';
 import { Model, RoutingDecision, TaskRoutingParams, ModelPerformanceProfile } from '../../types/index.js';
 import fs from 'fs/promises';
@@ -123,6 +124,7 @@ const TOKEN_THRESHOLDS = {
  * - User priority
  * - Model context window limitations
  * - Benchmark performance data
+ * - Availability of free models
  */
 export const decisionEngine = {
   /**
@@ -238,11 +240,89 @@ export const decisionEngine = {
   },
 
   /**
+   * Check if free models are available from OpenRouter
+   */
+  async hasFreeModels(): Promise<boolean> {
+    // Only check if OpenRouter API key is configured
+    if (!config.openRouterApiKey) {
+      return false;
+    }
+    
+    try {
+      // Initialize OpenRouter module if needed
+      if (Object.keys(openRouterModule.modelTracking.models).length === 0) {
+        await openRouterModule.initialize();
+      }
+      
+      // Get free models
+      const freeModels = await costMonitor.getFreeModels();
+      return freeModels.length > 0;
+    } catch (error) {
+      logger.error('Error checking for free models:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Get the best free model for a task
+   */
+  async getBestFreeModel(
+    complexity: number,
+    totalTokens: number
+  ): Promise<Model | null> {
+    // Only check if OpenRouter API key is configured
+    if (!config.openRouterApiKey) {
+      return null;
+    }
+    
+    try {
+      // Get free models
+      const freeModels = await costMonitor.getFreeModels();
+      if (freeModels.length === 0) {
+        return null;
+      }
+      
+      // Filter models that can handle the context length
+      const suitableModels = freeModels.filter(model => {
+        return model.contextWindow && model.contextWindow >= totalTokens;
+      });
+      
+      if (suitableModels.length === 0) {
+        return null;
+      }
+      
+      // Find the best model based on complexity
+      let bestModel: Model | null = null;
+      
+      if (complexity >= COMPLEXITY_THRESHOLDS.COMPLEX) {
+        // For complex tasks, prefer models with larger context windows
+        bestModel = suitableModels.reduce((best, current) => {
+          return (!best || (current.contextWindow || 0) > (best.contextWindow || 0)) ? current : best;
+        }, null as Model | null);
+      } else if (complexity >= COMPLEXITY_THRESHOLDS.MEDIUM) {
+        // For medium complexity tasks, prefer a balance of context window and response time
+        // Since we don't have response time data for all models, use context window as a proxy
+        bestModel = suitableModels.reduce((best, current) => {
+          return (!best || (current.contextWindow || 0) > (best.contextWindow || 0)) ? current : best;
+        }, null as Model | null);
+      } else {
+        // For simple tasks, any model will do
+        bestModel = suitableModels[0];
+      }
+      
+      return bestModel;
+    } catch (error) {
+      logger.error('Error getting best free model:', error);
+      return null;
+    }
+  },
+
+  /**
    * Pre-emptively determine if a task should be routed to a local LLM or paid API
    * This is a fast decision based on task characteristics without making API calls
    * It's useful for quick decisions at task initialization
    */
-  preemptiveRouting(params: TaskRoutingParams): RoutingDecision {
+  async preemptiveRouting(params: TaskRoutingParams): Promise<RoutingDecision> {
     const { task, contextLength, expectedOutputLength, complexity, priority } = params;
     
     logger.debug('Preemptive routing with parameters:', params);
@@ -281,7 +361,11 @@ export const decisionEngine = {
     // Calculate weighted scores for each provider
     let localScore = 0.5;  // Start with neutral score
     let paidScore = 0.5;   // Start with neutral score
+    let freeScore = 0.5;   // Start with neutral score for free models
     let explanation = '';
+    
+    // Check if free models are available
+    const hasFreeModels = await this.hasFreeModels();
     
     // Quick decision based on complexity thresholds from benchmark results
     if (complexity >= COMPLEXITY_THRESHOLDS.COMPLEX) {
@@ -292,10 +376,22 @@ export const decisionEngine = {
       // Moderately complex tasks might work with local models but paid APIs are safer
       paidScore += 0.15 * factors.complexity.weight;
       explanation += `Complexity factor: Task complexity (${complexity.toFixed(2)}) is moderately high, slightly favoring paid API. `;
+      
+      // Free models might also be suitable for medium complexity tasks
+      if (hasFreeModels) {
+        freeScore += 0.15 * factors.complexity.weight;
+        explanation += `Free models might also be suitable for this medium complexity task. `;
+      }
     } else if (complexity <= COMPLEXITY_THRESHOLDS.SIMPLE) {
       // Simple tasks are well-suited for local models
       localScore += 0.3 * factors.complexity.weight;
       explanation += `Complexity factor: Task complexity (${complexity.toFixed(2)}) is low, favoring local model. `;
+      
+      // Free models are also well-suited for simple tasks
+      if (hasFreeModels) {
+        freeScore += 0.3 * factors.complexity.weight;
+        explanation += `Free models are also well-suited for this simple task. `;
+      }
     }
     
     // Quick decision based on token usage
@@ -304,10 +400,26 @@ export const decisionEngine = {
       // Large contexts might exceed some local model capabilities
       paidScore += 0.2 * factors.tokenUsage.weight;
       explanation += `Token usage factor: Total tokens (${totalTokens}) is very high, favoring paid API. `;
+      
+      // Free models might also have large context windows
+      if (hasFreeModels) {
+        // Check if any free model can handle this context length
+        const bestFreeModel = await this.getBestFreeModel(complexity, totalTokens);
+        if (bestFreeModel) {
+          freeScore += 0.2 * factors.tokenUsage.weight;
+          explanation += `Free model ${bestFreeModel.id} can handle this large context. `;
+        }
+      }
     } else if (totalTokens <= TOKEN_THRESHOLDS.SMALL) {
       // Small contexts are efficient with local models
       localScore += 0.2 * factors.tokenUsage.weight;
       explanation += `Token usage factor: Total tokens (${totalTokens}) is low, favoring local model. `;
+      
+      // Free models are also efficient with small contexts
+      if (hasFreeModels) {
+        freeScore += 0.2 * factors.tokenUsage.weight;
+        explanation += `Free models are also efficient with this small context. `;
+      }
     }
     
     // Quick decision based on user priority
@@ -321,6 +433,12 @@ export const decisionEngine = {
         // Local models have zero cost
         localScore += 0.8 * factors.priority.weight;
         explanation += 'Priority factor: Cost is prioritized, strongly favoring local model. ';
+        
+        // Free models also have zero cost
+        if (hasFreeModels) {
+          freeScore += 0.8 * factors.priority.weight;
+          explanation += 'Free models also have zero cost. ';
+        }
         break;
       case 'quality':
         if (complexity > COMPLEXITY_THRESHOLDS.MEDIUM) {
@@ -331,13 +449,30 @@ export const decisionEngine = {
           // For simpler tasks with quality priority, local models might be sufficient
           paidScore += 0.4 * factors.priority.weight;
           explanation += 'Priority factor: Quality is prioritized, moderately favoring paid API. ';
+          
+          // Free models might also provide good quality for simpler tasks
+          if (hasFreeModels) {
+            freeScore += 0.3 * factors.priority.weight;
+            explanation += 'Free models might also provide good quality for this simpler task. ';
+          }
         }
         break;
     }
     
     // Determine the provider based on scores
-    const provider = localScore > paidScore ? 'local' : 'paid';
-    const confidence = Math.min(Math.abs(localScore - paidScore), 1.0);
+    let provider: 'local' | 'paid';
+    let confidence: number;
+    
+    // If free models are available and have the highest score, use them
+    if (hasFreeModels && freeScore > localScore && freeScore > paidScore) {
+      provider = 'paid'; // We'll use a free model from OpenRouter, which is technically a "paid" provider
+      confidence = Math.min(Math.abs(freeScore - Math.max(localScore, paidScore)), 1.0);
+      explanation += 'Free models from OpenRouter have the highest score. ';
+    } else {
+      // Otherwise, use the highest scoring provider
+      provider = localScore > paidScore ? 'local' : 'paid';
+      confidence = Math.min(Math.abs(localScore - paidScore), 1.0);
+    }
     
     // Select the best model based on task characteristics
     let model: string;
@@ -351,11 +486,28 @@ export const decisionEngine = {
         model = 'qwen2.5-7b-instruct-1m'; // Larger model for complex tasks
       }
     } else {
-      // Select paid model based on complexity
-      if (complexity >= COMPLEXITY_THRESHOLDS.COMPLEX) {
-        model = 'gpt-4o'; // More capable model for very complex tasks
+      // If free models are available and have the highest score, use the best free model
+      if (hasFreeModels && freeScore > localScore && freeScore > paidScore) {
+        // Get the best free model
+        const bestFreeModel = await this.getBestFreeModel(complexity, totalTokens);
+        if (bestFreeModel) {
+          model = bestFreeModel.id;
+          explanation += `Selected free model ${model} based on task characteristics. `;
+        } else {
+          // Fall back to standard paid model selection
+          if (complexity >= COMPLEXITY_THRESHOLDS.COMPLEX) {
+            model = 'gpt-4o'; // More capable model for very complex tasks
+          } else {
+            model = 'gpt-3.5-turbo'; // Standard model for most tasks
+          }
+        }
       } else {
-        model = 'gpt-3.5-turbo'; // Standard model for most tasks
+        // Standard paid model selection
+        if (complexity >= COMPLEXITY_THRESHOLDS.COMPLEX) {
+          model = 'gpt-4o'; // More capable model for very complex tasks
+        } else {
+          model = 'gpt-3.5-turbo'; // Standard model for most tasks
+        }
       }
     }
     
@@ -384,7 +536,7 @@ export const decisionEngine = {
     logger.debug('Routing task with parameters:', params);
     
     // Check if we can make a high-confidence preemptive decision
-    const preemptiveDecision = this.preemptiveRouting(params);
+    const preemptiveDecision = await this.preemptiveRouting(params);
     if (preemptiveDecision.confidence >= 0.7) {
       logger.debug('Using high-confidence preemptive decision');
       return preemptiveDecision;
@@ -400,6 +552,10 @@ export const decisionEngine = {
     
     // Get available models to check context window limitations
     const availableModels = await costMonitor.getAvailableModels();
+    
+    // Check if free models are available
+    const hasFreeModels = await this.hasFreeModels();
+    const freeModels = hasFreeModels ? await costMonitor.getFreeModels() : [];
     
     // Initialize decision factors
     const factors = {
@@ -439,6 +595,7 @@ export const decisionEngine = {
     // Calculate weighted scores for each provider
     let localScore = 0.5;  // Start with neutral score
     let paidScore = 0.5;   // Start with neutral score
+    let freeScore = 0.5;   // Start with neutral score for free models
     let explanation = '';
     
     // Factor 1: Cost
@@ -449,6 +606,12 @@ export const decisionEngine = {
       localScore += costFactor * factors.cost.weight;
       factors.cost.wasFactor = true;
       explanation += `Cost factor: Paid API is ${costRatio.toFixed(1)}x more expensive than local. `;
+      
+      // Free models have zero cost
+      if (hasFreeModels) {
+        freeScore += costFactor * factors.cost.weight;
+        explanation += 'Free models have zero cost. ';
+      }
     } else if (costRatio < 1) {
       // Local is more expensive (unlikely but possible in some scenarios)
       const costFactor = Math.min(0.3, Math.log10(1/costRatio) * 0.1);
@@ -468,6 +631,12 @@ export const decisionEngine = {
       localScore += complexityFactor * factors.complexity.weight;
       factors.complexity.wasFactor = true;
       explanation += `Complexity factor: Task complexity (${complexity.toFixed(2)}) is below medium threshold (${COMPLEXITY_THRESHOLDS.MEDIUM}). `;
+      
+      // Free models are also suitable for lower complexity tasks
+      if (hasFreeModels) {
+        freeScore += complexityFactor * factors.complexity.weight;
+        explanation += 'Free models are also suitable for this lower complexity task. ';
+      }
     }
     
     // Factor 3: Token usage
@@ -477,11 +646,29 @@ export const decisionEngine = {
       paidScore += tokenFactor * factors.tokenUsage.weight;
       factors.tokenUsage.wasFactor = true;
       explanation += `Token usage factor: Total tokens (${totalTokens}) exceeds medium threshold (${TOKEN_THRESHOLDS.MEDIUM}). `;
+      
+      // Check if any free model can handle this context length
+      if (hasFreeModels) {
+        const suitableFreeModels = freeModels.filter(model => {
+          return model.contextWindow && model.contextWindow >= totalTokens;
+        });
+        
+        if (suitableFreeModels.length > 0) {
+          freeScore += tokenFactor * factors.tokenUsage.weight;
+          explanation += `Free models can handle this larger context. `;
+        }
+      }
     } else {
       const tokenFactor = Math.min(0.3, (TOKEN_THRESHOLDS.MEDIUM - totalTokens) / TOKEN_THRESHOLDS.MEDIUM * 0.1);
       localScore += tokenFactor * factors.tokenUsage.weight;
       factors.tokenUsage.wasFactor = true;
       explanation += `Token usage factor: Total tokens (${totalTokens}) is below medium threshold (${TOKEN_THRESHOLDS.MEDIUM}). `;
+      
+      // Free models are also efficient with smaller contexts
+      if (hasFreeModels) {
+        freeScore += tokenFactor * factors.tokenUsage.weight;
+        explanation += 'Free models are also efficient with this smaller context. ';
+      }
     }
     
     // Factor 4: User priority
@@ -495,6 +682,12 @@ export const decisionEngine = {
         localScore += 0.8 * factors.priority.weight;
         factors.priority.wasFactor = true;
         explanation += 'Priority factor: Cost is prioritized, favoring the local model. ';
+        
+        // Free models also have zero cost
+        if (hasFreeModels) {
+          freeScore += 0.8 * factors.priority.weight;
+          explanation += 'Free models also have zero cost. ';
+        }
         break;
       case 'quality':
         if (complexity > COMPLEXITY_THRESHOLDS.MEDIUM) {
@@ -506,6 +699,12 @@ export const decisionEngine = {
           paidScore += 0.4 * factors.priority.weight;
           factors.priority.wasFactor = true;
           explanation += 'Priority factor: Quality is prioritized, slightly favoring the paid API. ';
+          
+          // Free models might also provide good quality for simpler tasks
+          if (hasFreeModels) {
+            freeScore += 0.3 * factors.priority.weight;
+            explanation += 'Free models might also provide good quality for this simpler task. ';
+          }
         }
         break;
     }
@@ -518,11 +717,11 @@ export const decisionEngine = {
     for (const model of availableModels) {
       if (model.provider === 'local' || model.provider === 'lm-studio' || model.provider === 'ollama') {
         // Check if the model has context window information
-        const contextWindow = (model as any).contextWindow;
+        const contextWindow = model.contextWindow;
         if (contextWindow && contextWindow > 0) {
           if (totalTokens <= contextWindow) {
             // This model can handle the context
-            if (!bestLocalModel || (bestLocalModel as any).contextWindow < contextWindow) {
+            if (!bestLocalModel || (bestLocalModel.contextWindow || 0) < (contextWindow || 0)) {
               bestLocalModel = model;
             }
           }
@@ -530,6 +729,24 @@ export const decisionEngine = {
           // If no context window info, assume it can handle it
           if (!bestLocalModel) {
             bestLocalModel = model;
+          }
+        }
+      }
+    }
+    
+    // Find the best free model that can handle the context length
+    let bestFreeModel: Model | null = null;
+    
+    if (hasFreeModels) {
+      for (const model of freeModels) {
+        // Check if the model has context window information
+        const contextWindow = model.contextWindow;
+        if (contextWindow && contextWindow > 0) {
+          if (totalTokens <= contextWindow) {
+            // This model can handle the context
+            if (!bestFreeModel || (bestFreeModel.contextWindow || 0) < (contextWindow || 0)) {
+              bestFreeModel = model;
+            }
           }
         }
       }
@@ -586,7 +803,12 @@ export const decisionEngine = {
     let provider: 'local' | 'paid';
     let confidence: number;
     
-    if (maxContextExceeded) {
+    // If free models are available and have the highest score, use them
+    if (hasFreeModels && bestFreeModel && freeScore > localScore && freeScore > paidScore) {
+      provider = 'paid'; // We'll use a free model from OpenRouter, which is technically a "paid" provider
+      confidence = Math.min(Math.abs(freeScore - Math.max(localScore, paidScore)), 1.0);
+      explanation += 'Free models from OpenRouter have the highest score. ';
+    } else if (maxContextExceeded) {
       // Force paid API if no local model can handle the context
       provider = 'paid';
       confidence = 0.9;
@@ -610,7 +832,7 @@ export const decisionEngine = {
           // For simple tasks with small context, prefer smaller models
           const smallModels = availableModels.filter(m =>
             (m.provider === 'local' || m.provider === 'lm-studio' || m.provider === 'ollama') &&
-            m.id.includes('1.5b') || m.id.includes('3b') || m.id.includes('mini')
+            (m.id.includes('1.5b') || m.id.includes('3b') || m.id.includes('mini'))
           );
           if (smallModels.length > 0) {
             model = smallModels[0].id;
@@ -629,11 +851,17 @@ export const decisionEngine = {
         model = config.defaultLocalModel;
       }
     } else {
-      // Select paid model based on complexity
-      if (complexity >= COMPLEXITY_THRESHOLDS.COMPLEX) {
-        model = 'gpt-4o'; // More capable model for very complex tasks
+      // If free models are available and have the highest score, use the best free model
+      if (hasFreeModels && bestFreeModel && freeScore > localScore && freeScore > paidScore) {
+        model = bestFreeModel.id;
+        explanation += `Selected free model ${model} based on task characteristics. `;
       } else {
-        model = 'gpt-3.5-turbo'; // Standard model for most tasks
+        // Standard paid model selection
+        if (complexity >= COMPLEXITY_THRESHOLDS.COMPLEX) {
+          model = 'gpt-4o'; // More capable model for very complex tasks
+        } else {
+          model = 'gpt-3.5-turbo'; // Standard model for most tasks
+        }
       }
     }
     

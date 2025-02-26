@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { config } from '../../config/index.js';
 import { costMonitor } from '../cost-monitor/index.js';
+import { openRouterModule } from '../openrouter/index.js';
 import { logger } from '../../utils/logger.js';
 import { 
   BenchmarkConfig, 
@@ -18,6 +19,13 @@ import {
 const defaultConfig: BenchmarkConfig = {
   ...config.benchmark,
 };
+
+/**
+ * Check if OpenRouter API key is configured
+ */
+function isOpenRouterConfigured(): boolean {
+  return !!config.openRouterApiKey;
+}
 
 /**
  * Call LM Studio API
@@ -131,6 +139,86 @@ async function callOllamaApi(
     }
   } catch (error) {
     logger.error(`Error calling Ollama API for model ${modelId}:`, error);
+    return { success: false };
+  }
+}
+
+/**
+ * Call OpenRouter API
+ */
+async function callOpenRouterApi(
+  modelId: string,
+  task: string,
+  timeout: number
+): Promise<{
+  success: boolean;
+  text?: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+  };
+}> {
+  try {
+    // Check if API key is configured
+    if (!isOpenRouterConfigured()) {
+      logger.warn('OpenRouter API key not configured, cannot call OpenRouter API');
+      return { success: false };
+    }
+    
+    // Call the OpenRouter API
+    const result = await openRouterModule.callOpenRouterApi(modelId, task, timeout);
+    
+    return {
+      success: result.success,
+      text: result.text,
+      usage: result.usage,
+    };
+  } catch (error) {
+    logger.error(`Error calling OpenRouter API for model ${modelId}:`, error);
+    return { success: false };
+  }
+}
+
+/**
+ * Benchmark prompting strategies for OpenRouter models
+ */
+async function benchmarkPromptingStrategies(
+  modelId: string,
+  task: string,
+  timeout: number
+): Promise<{
+  success: boolean;
+  text?: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+  };
+  qualityScore?: number;
+}> {
+  try {
+    // Check if API key is configured
+    if (!isOpenRouterConfigured()) {
+      logger.warn('OpenRouter API key not configured, cannot benchmark prompting strategies');
+      return { success: false };
+    }
+    
+    // Benchmark prompting strategies
+    const result = await openRouterModule.benchmarkPromptingStrategies(modelId, task, timeout);
+    
+    if (result.success && result.text) {
+      const qualityScore = evaluateQuality(task, result.text);
+      
+      return {
+        success: true,
+        text: result.text,
+        usage: result.usage,
+        qualityScore,
+      };
+    } else {
+      return { success: false };
+    }
+  } catch (error) {
+    logger.error(`Error benchmarking prompting strategies for model ${modelId}:`, error);
     return { success: false };
   }
 }
@@ -347,6 +435,30 @@ async function runModelBenchmark(
         if (success) {
           output = response.text || '';
         }
+      } else if (model.provider === 'openrouter') {
+        // For OpenRouter models, we need to check if it's the first run
+        // If it is, we'll benchmark prompting strategies to find the best one
+        if (i === 0) {
+          // Benchmark prompting strategies
+          const benchmarkResult = await benchmarkPromptingStrategies(model.id, task, config.taskTimeout);
+          success = benchmarkResult.success;
+          qualityScore = benchmarkResult.qualityScore || 0;
+          promptTokens = benchmarkResult.usage?.prompt_tokens || contextLength;
+          completionTokens = benchmarkResult.usage?.completion_tokens || expectedOutputLength;
+          if (success) {
+            output = benchmarkResult.text || '';
+          }
+        } else {
+          // For subsequent runs, use the best prompting strategy
+          response = await callOpenRouterApi(model.id, task, config.taskTimeout);
+          success = response.success;
+          qualityScore = evaluateQuality(task, response.text || '');
+          promptTokens = response.usage?.prompt_tokens || contextLength;
+          completionTokens = response.usage?.completion_tokens || expectedOutputLength;
+          if (success) {
+            output = response.text || '';
+          }
+        }
       } else if (model.provider === 'openai') {
         // Call OpenAI API (simulated for now)
         response = await simulateOpenAiApi(task, config.taskTimeout);
@@ -528,9 +640,52 @@ async function benchmarkTask(
     ? availableModels.find(m => m.id === params.localModel && (m.provider === 'local' || m.provider === 'lm-studio' || m.provider === 'ollama'))
     : availableModels.find(m => m.provider === 'local' || m.provider === 'lm-studio' || m.provider === 'ollama');
   
-  const paidModel = params.paidModel
-    ? availableModels.find(m => m.id === params.paidModel && m.provider !== 'local' && m.provider !== 'lm-studio' && m.provider !== 'ollama')
-    : { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', capabilities: { chat: true, completion: true }, costPerToken: { prompt: 0.000001, completion: 0.000002 } };
+  // For paid model, check if we should use a free model from OpenRouter
+  let paidModel: Model | undefined;
+  
+  if (params.paidModel) {
+    // If a specific paid model is requested, use it
+    paidModel = availableModels.find(m => m.id === params.paidModel && m.provider !== 'local' && m.provider !== 'lm-studio' && m.provider !== 'ollama');
+  } else {
+    // Check if OpenRouter API key is configured and free models are available
+    if (isOpenRouterConfigured()) {
+      try {
+        // Initialize OpenRouter module if needed
+        if (Object.keys(openRouterModule.modelTracking.models).length === 0) {
+          await openRouterModule.initialize();
+        }
+        
+        // Get free models
+        const freeModels = await costMonitor.getFreeModels();
+        
+        if (freeModels.length > 0) {
+          // Find the best free model for this task
+          const bestFreeModel = freeModels.find(m => {
+            // Check if the model can handle the context length
+            return m.contextWindow && m.contextWindow >= (contextLength + expectedOutputLength);
+          });
+          
+          if (bestFreeModel) {
+            paidModel = bestFreeModel;
+            logger.info(`Using free model ${bestFreeModel.id} from OpenRouter`);
+          }
+        }
+      } catch (error) {
+        logger.error('Error getting free models from OpenRouter:', error);
+      }
+    }
+    
+    // If no free model is available or suitable, use the default paid model
+    if (!paidModel) {
+      paidModel = { 
+        id: 'gpt-3.5-turbo', 
+        name: 'GPT-3.5 Turbo', 
+        provider: 'openai', 
+        capabilities: { chat: true, completion: true }, 
+        costPerToken: { prompt: 0.000001, completion: 0.000002 } 
+      };
+    }
+  }
   
   if (!localModel) {
     throw new Error('No local model available for benchmarking');
@@ -668,6 +823,72 @@ async function benchmarkTasks(
 }
 
 /**
+ * Benchmark free models from OpenRouter
+ */
+async function benchmarkFreeModels(
+  tasks: BenchmarkTaskParams[],
+  config: BenchmarkConfig = defaultConfig
+): Promise<BenchmarkSummary> {
+  logger.info('Benchmarking free models from OpenRouter');
+  
+  // Check if OpenRouter API key is configured
+  if (!isOpenRouterConfigured()) {
+    throw new Error('OpenRouter API key not configured, cannot benchmark free models');
+  }
+  
+  // Initialize OpenRouter module if needed
+  if (Object.keys(openRouterModule.modelTracking.models).length === 0) {
+    await openRouterModule.initialize();
+  }
+  
+  // Get free models
+  const freeModels = await costMonitor.getFreeModels();
+  
+  if (freeModels.length === 0) {
+    throw new Error('No free models available from OpenRouter');
+  }
+  
+  logger.info(`Found ${freeModels.length} free models from OpenRouter`);
+  
+  // Run benchmarks for each free model
+  const results: BenchmarkResult[] = [];
+  
+  for (const freeModel of freeModels) {
+    logger.info(`Benchmarking free model: ${freeModel.id}`);
+    
+    for (const task of tasks) {
+      // Create a copy of the task with the free model as the paid model
+      const taskWithFreeModel: BenchmarkTaskParams = {
+        ...task,
+        paidModel: freeModel.id,
+      };
+      
+      // Run the benchmark
+      const result = await benchmarkTask(taskWithFreeModel, config);
+      results.push(result);
+    }
+  }
+  
+  // Generate summary
+  const summary = generateSummary(results);
+  
+  // Save summary if configured
+  if (config.saveResults) {
+    // Create a special filename for free models
+    const timestamp = new Date().toISOString().replace(/:/g, '-');
+    const filename = `free-models-summary-${timestamp}.json`;
+    const filePath = path.join(config.resultsPath, filename);
+    
+    // Write the summary to disk
+    await fs.writeFile(filePath, JSON.stringify(summary, null, 2));
+    
+    logger.info(`Saved free models benchmark summary to ${filePath}`);
+  }
+  
+  return summary;
+}
+
+/**
  * Benchmark Module
  * 
  * This module is responsible for benchmarking the performance of local LLMs vs paid APIs.
@@ -682,9 +903,11 @@ export const benchmarkModule = {
   defaultConfig,
   benchmarkTask,
   benchmarkTasks,
+  benchmarkFreeModels,
   runModelBenchmark,
   callLmStudioApi,
   callOllamaApi,
+  callOpenRouterApi,
   simulateOpenAiApi,
   simulateGenericApi,
   evaluateQuality,
