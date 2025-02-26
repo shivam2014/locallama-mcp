@@ -221,3 +221,6 @@ export interface TaskRoutingParams {
   /** User priority */
   priority: 'speed' | 'cost' | 'quality';
 }
+
+// Export benchmark types
+export * from './benchmark.js';

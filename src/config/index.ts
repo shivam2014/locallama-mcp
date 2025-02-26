@@ -24,6 +24,16 @@ export const config = {
   costThreshold: parseFloat(process.env.COST_THRESHOLD || '0.02'),
   qualityThreshold: parseFloat(process.env.QUALITY_THRESHOLD || '0.7'),
   
+  // Benchmark configuration
+  benchmark: {
+    runsPerTask: parseInt(process.env.BENCHMARK_RUNS_PER_TASK || '3', 10),
+    parallel: process.env.BENCHMARK_PARALLEL === 'true',
+    maxParallelTasks: parseInt(process.env.BENCHMARK_MAX_PARALLEL_TASKS || '2', 10),
+    taskTimeout: parseInt(process.env.BENCHMARK_TASK_TIMEOUT || '60000', 10),
+    saveResults: process.env.BENCHMARK_SAVE_RESULTS !== 'false',
+    resultsPath: process.env.BENCHMARK_RESULTS_PATH || './benchmark-results',
+  },
+  
   // Logging
   logLevel: process.env.LOG_LEVEL || 'info',
   
