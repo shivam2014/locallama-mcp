@@ -42,7 +42,6 @@ coverage/
 # Editor directories and files
 .idea/
 .vscode/
-.github/
 *.suo
 *.ntvs*
 *.njsproj
