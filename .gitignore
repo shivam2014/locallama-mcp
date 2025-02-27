@@ -11,6 +11,7 @@ jspm_packages/
 # Build outputs
 dist/
 build/
+dist-test/
 *.tsbuildinfo
 
 # Environment variables and secrets - NEVER commit these to GitHub
