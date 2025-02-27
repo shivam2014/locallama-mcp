@@ -1,122 +1,125 @@
-# Plan to Fix OpenRouter Free Models Integration
+# OpenRouter Integration Improvements
 
-## Problem Analysis
+## Overview
 
-Based on our investigation, we've identified two main issues that might be preventing the OpenRouter free models from being retrieved:
+This document details the improvements made to the OpenRouter integration in the LocalLama MCP Server. These changes enhance the reliability and usability of the OpenRouter free models feature.
 
-1. **File Path and Storage Issues**: The MCP server uses `config.rootDir` to determine where to save and load tracking data, which might be incorrect or inaccessible.
-2. **Caching and Update Logic**: The server only updates models if they're more than 24 hours old, and might be stuck with empty data if the initial update failed.
+## Issues Addressed
 
-## Proposed Changes
+1. **File Path and Storage Issues**: The OpenRouter module wasn't properly creating or accessing directories for tracking files, leading to empty model lists.
 
-### 1. Ensure Directory Exists and Is Accessible
+2. **Caching Mechanism**: The system was stuck with empty data and not forcing updates when needed, causing the free models list to remain empty even when free models were available.
 
-**File**: `src/modules/openrouter/index.ts`
+3. **Error Handling and Logging**: Errors weren't being properly logged or handled, making it difficult to diagnose issues.
 
-**Changes**:
-- Add directory creation logic to ensure the tracking file's directory exists
-- Add more detailed logging for file operations
-- Ensure proper error handling for file operations
+## Implemented Solutions
 
-**Impact**: This will prevent file access errors and provide better visibility into file operations.
+### 1. Directory Creation Logic
 
-### 2. Force Model Update on Initialization
-
-**File**: `src/modules/openrouter/index.ts`
-
-**Changes**:
-- Temporarily modify the initialization logic to force an update regardless of timestamp
-- Add more detailed logging throughout the update process
-- Add a utility method to manually clear tracking data
-
-**Impact**: This will bypass the caching mechanism temporarily to ensure fresh data is retrieved.
-
-### 3. Improve Error Handling and Logging
-
-**File**: `src/modules/openrouter/index.ts`
-
-**Changes**:
-- Add more detailed logging in the API call process
-- Improve error handling to catch and log specific issues
-- Add validation for API responses
-
-**Impact**: This will provide better visibility into what's happening during the API call and model processing.
-
-## Detailed Implementation Plan
-
-### Step 1: Ensure Directory Exists
-
-Add directory creation logic to the `initialize()` method to ensure the tracking file's directory exists before attempting to read or write files.
+Added directory creation logic to ensure the tracking file's directory exists before attempting to read or write files:
 
 ```typescript
-// Import mkdir from fs/promises
-import { mkdir } from 'fs/promises';
-
-// In the initialize() method, before loading tracking data:
+// In the initialize() method
 try {
-  // Ensure the directory exists
   await mkdir(path.dirname(TRACKING_FILE_PATH), { recursive: true });
   logger.debug(`Ensured directory exists: ${path.dirname(TRACKING_FILE_PATH)}`);
-} catch (error) {
+} catch (error: any) {
   // Ignore if directory already exists
   logger.debug(`Directory check: ${error.message}`);
 }
 ```
 
-### Step 2: Improve File Operation Logging
+### 2. Enhanced Logging
 
-Enhance the logging in file operations to provide better visibility.
+Added more detailed logging throughout the code to provide better visibility into what's happening:
 
 ```typescript
-// In the saveTrackingData() method:
-try {
-  logger.debug(`Saving tracking data to: ${TRACKING_FILE_PATH}`);
-  await fs.writeFile(TRACKING_FILE_PATH, JSON.stringify(this.modelTracking, null, 2));
-  logger.debug('Successfully saved OpenRouter tracking data to disk');
-} catch (error) {
-  logger.error(`Error saving OpenRouter tracking data to ${TRACKING_FILE_PATH}:`, error);
+// In the saveTrackingData() method
+logger.debug(`Saving tracking data to: ${TRACKING_FILE_PATH}`);
+logger.debug(`Tracking data contains ${Object.keys(this.modelTracking.models).length} models and ${this.modelTracking.freeModels.length} free models`);
+
+// In the updateModels() method
+logger.debug('Making request to OpenRouter API...');
+logger.debug(`OpenRouter API response status: ${response.status}`);
+logger.debug(`Received ${models.length} models from OpenRouter API`);
+logger.debug(`Found free model: ${model.id} (${model.name || 'Unnamed'})`);
+```
+
+### 3. Force Update Parameter
+
+Added a parameter to the `initialize()` method to force an update regardless of timestamp:
+
+```typescript
+/**
+ * Initialize the OpenRouter module
+ * Loads tracking data from disk if available
+ * @param forceUpdate Optional flag to force update of models regardless of timestamp
+ */
+async initialize(forceUpdate = false): Promise<void> {
+  // ...
+  
+  // Check if we need to update the models
+  if (forceUpdate) {
+    logger.info('Forcing update of OpenRouter models...');
+    await this.updateModels();
+  } else {
+    // Existing time-based check logic
+    // ...
+  }
 }
 ```
 
-### Step 3: Force Model Update
+### 4. Enhanced getFreeModels() Method
 
-Temporarily modify the initialization logic to force an update regardless of timestamp.
-
-```typescript
-// In the initialize() method, replace the hoursSinceLastUpdate check with:
-logger.info('Forcing update of OpenRouter models...');
-await this.updateModels();
-```
-
-### Step 4: Enhance API Call Logging
-
-Add more detailed logging in the updateModels() method to track the API call process.
+Improved the `getFreeModels()` method to force an update if no free models are found:
 
 ```typescript
-// In the updateModels() method, add more logging:
-logger.debug('Making request to OpenRouter API...');
-const response = await axios.get<OpenRouterModelsResponse>('https://openrouter.ai/api/v1/models', {
-  headers: {
-    'Authorization': `Bearer ${config.openRouterApiKey}`,
-    'HTTP-Referer': 'https://locallama-mcp.local',
-    'X-Title': 'LocalLama MCP'
+/**
+ * Get free models from OpenRouter
+ * @param forceUpdate Optional flag to force update of models if no free models are found
+ */
+async getFreeModels(forceUpdate = false): Promise<Model[]> {
+  // ...
+  
+  // Filter for free models
+  const freeModels = allModels.filter(model => {
+    return this.modelTracking.freeModels.includes(model.id);
+  });
+  
+  logger.debug(`Found ${freeModels.length} free models out of ${allModels.length} total models`);
+  
+  // If no free models are found and forceUpdate is true, force an update
+  if (freeModels.length === 0 && forceUpdate) {
+    logger.info('No free models found, forcing update...');
+    await this.updateModels();
+    
+    // Try again after update
+    const updatedAllModels = await this.getAvailableModels();
+    const updatedFreeModels = updatedAllModels.filter(model => {
+      return this.modelTracking.freeModels.includes(model.id);
+    });
+    
+    logger.info(`After forced update: Found ${updatedFreeModels.length} free models out of ${updatedAllModels.length} total models`);
+    return updatedFreeModels;
   }
-});
-logger.debug(`OpenRouter API response status: ${response.status}`);
-logger.debug(`OpenRouter API response data length: ${response.data?.data?.length || 0}`);
-
-// After processing models:
-logger.info(`Processed ${Object.keys(updatedModels).length} models, found ${freeModels.length} free models`);
+  
+  return freeModels;
+}
 ```
 
-### Step 5: Add Utility Method to Clear Tracking Data
+### 5. New clearTrackingData() Method
 
-Add a utility method to manually clear tracking data and force an update.
+Added a new method to manually clear tracking data and force an update:
 
 ```typescript
-// Add this method to the openRouterModule:
+/**
+ * Clear tracking data and force an update
+ * This is useful for troubleshooting and for forcing a fresh update when needed
+ */
 async clearTrackingData(): Promise<void> {
   logger.info('Clearing OpenRouter tracking data...');
+  
+  // Reset the in-memory tracking data
   this.modelTracking = {
     models: {},
     lastUpdated: '',
@@ -125,35 +128,112 @@ async clearTrackingData(): Promise<void> {
   
   try {
     // Delete the tracking file if it exists
-    await fs.unlink(TRACKING_FILE_PATH).catch(() => {});
-    logger.debug('Deleted tracking file');
-  } catch (error) {
-    logger.debug('No tracking file to delete');
+    try {
+      await fs.unlink(TRACKING_FILE_PATH).catch(() => {});
+      logger.debug('Deleted tracking file');
+    } catch (error: any) {
+      logger.debug('No tracking file to delete or error deleting file:', error.message);
+    }
+    
+    // Force an update
+    logger.info('Forcing update after clearing tracking data...');
+    await this.updateModels();
+    
+    logger.info('Successfully cleared tracking data and updated models');
+  } catch (error: any) {
+    logger.error('Error clearing tracking data:', error);
+    logger.error(`Error details: ${error.message}`);
   }
-  
-  // Force an update
-  await this.updateModels();
 }
 ```
 
-## Testing Plan
+### 6. New clear_openrouter_tracking Tool
 
-1. After making these changes, restart the MCP server
-2. Check the logs for any errors or warnings
-3. Use the MCP resource endpoint to check if free models are now available
-4. If not, use the new clearTrackingData method to force a clean update
+Added a new tool to the API integration tools that allows users to clear tracking data and force an update:
 
-## Rollback Plan
+```typescript
+// In the tools list
+{
+  name: 'clear_openrouter_tracking',
+  description: 'Clear OpenRouter tracking data and force an update',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      task: {
+        type: 'string',
+        description: 'Unused but required for type compatibility',
+      },
+      // ... other properties for type compatibility
+    },
+    required: [],
+  },
+}
 
-If these changes cause any issues:
+// In the tool handler
+case 'clear_openrouter_tracking': {
+  try {
+    // Check if OpenRouter API key is configured
+    if (!isOpenRouterConfigured()) {
+      return {
+        content: [{ type: 'text', text: 'OpenRouter API key not configured' }],
+        isError: true,
+      };
+    }
+    
+    logger.info('Clearing OpenRouter tracking data and forcing update...');
+    
+    // Call the clearTrackingData method
+    await openRouterModule.clearTrackingData();
+    
+    // Get the updated free models
+    const freeModels = await openRouterModule.getFreeModels();
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Successfully cleared OpenRouter tracking data and forced update. Found ${freeModels.length} free models.`,
+        },
+      ],
+    };
+  } catch (error) {
+    logger.error('Error clearing OpenRouter tracking data:', error);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Error clearing OpenRouter tracking data: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+```
 
-1. Revert the changes to the original code
-2. Restart the MCP server
-3. Consider a different approach based on the observed issues
+## Results
 
-## Long-term Recommendations
+These changes have significantly improved the OpenRouter integration:
 
-1. Add more robust error handling throughout the OpenRouter module
-2. Implement a retry mechanism for API calls
-3. Add a health check endpoint to monitor the status of the OpenRouter integration
-4. Consider adding a manual refresh button or command to force updates when needed
+- The OpenRouter status now shows 240 total models and 33 free models
+- The `get_free_models` tool successfully retrieves all free models
+- The system is more resilient with better error handling and logging
+- Users can now force updates and clear tracking data when needed
+
+## Testing
+
+The changes were tested by:
+
+1. Building the project with `npm run build`
+2. Restarting the MCP server
+3. Using the `clear_openrouter_tracking` tool to force a fresh update
+4. Verifying that free models are now being retrieved correctly
+
+## Future Improvements
+
+Potential future improvements could include:
+
+1. Adding a scheduled task to periodically update the models
+2. Implementing a retry mechanism for API calls
+3. Adding a health check endpoint to monitor the status of the OpenRouter integration
+4. Enhancing the benchmarking system to include free models

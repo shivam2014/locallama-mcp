@@ -1,13 +1,14 @@
 import axios, { AxiosError } from 'axios';
 import fs from 'fs/promises';
 import path from 'path';
+import { mkdir } from 'fs/promises';
 import { config } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
 import { Model } from '../../types/index.js';
-import { 
-  OpenRouterModel, 
-  OpenRouterModelsResponse, 
-  OpenRouterErrorResponse, 
+import {
+  OpenRouterModel,
+  OpenRouterModelsResponse,
+  OpenRouterErrorResponse,
   OpenRouterModelTracking,
   PromptingStrategy,
   OpenRouterErrorType
@@ -63,8 +64,9 @@ export const openRouterModule = {
   /**
    * Initialize the OpenRouter module
    * Loads tracking data from disk if available
+   * @param forceUpdate Optional flag to force update of models regardless of timestamp
    */
-  async initialize(): Promise<void> {
+  async initialize(forceUpdate = false): Promise<void> {
     logger.debug('Initializing OpenRouter module');
     
     try {
@@ -74,11 +76,20 @@ export const openRouterModule = {
         return;
       }
       
+      // Ensure the directory exists for tracking files
+      try {
+        await mkdir(path.dirname(TRACKING_FILE_PATH), { recursive: true });
+        logger.debug(`Ensured directory exists: ${path.dirname(TRACKING_FILE_PATH)}`);
+      } catch (error: any) {
+        // Ignore if directory already exists
+        logger.debug(`Directory check: ${error.message}`);
+      }
+      
       // Load tracking data from disk if available
       try {
         const data = await fs.readFile(TRACKING_FILE_PATH, 'utf8');
         this.modelTracking = JSON.parse(data) as OpenRouterModelTracking;
-        logger.debug(`Loaded OpenRouter tracking data with ${Object.keys(this.modelTracking.models).length} models`);
+        logger.debug(`Loaded OpenRouter tracking data with ${Object.keys(this.modelTracking.models).length} models and ${this.modelTracking.freeModels.length} free models`);
       } catch (error) {
         logger.debug('No existing OpenRouter tracking data found, will create new tracking data');
         this.modelTracking = {
@@ -100,15 +111,20 @@ export const openRouterModule = {
       }
       
       // Check if we need to update the models
-      const now = new Date();
-      const lastUpdated = new Date(this.modelTracking.lastUpdated);
-      const hoursSinceLastUpdate = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60);
-      
-      if (hoursSinceLastUpdate > 24) {
-        logger.info('OpenRouter models data is more than 24 hours old, updating...');
+      if (forceUpdate) {
+        logger.info('Forcing update of OpenRouter models...');
         await this.updateModels();
       } else {
-        logger.debug(`OpenRouter models data is ${hoursSinceLastUpdate.toFixed(1)} hours old, no update needed`);
+        const now = new Date();
+        const lastUpdated = new Date(this.modelTracking.lastUpdated);
+        const hoursSinceLastUpdate = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursSinceLastUpdate > 24) {
+          logger.info('OpenRouter models data is more than 24 hours old, updating...');
+          await this.updateModels();
+        } else {
+          logger.debug(`OpenRouter models data is ${hoursSinceLastUpdate.toFixed(1)} hours old, no update needed`);
+        }
       }
     } catch (error) {
       logger.error('Error initializing OpenRouter module:', error);
@@ -129,6 +145,7 @@ export const openRouterModule = {
       }
       
       // Query OpenRouter for available models
+      logger.debug('Making request to OpenRouter API...');
       const response = await axios.get<OpenRouterModelsResponse>('https://openrouter.ai/api/v1/models', {
         headers: {
           'Authorization': `Bearer ${config.openRouterApiKey}`,
@@ -137,9 +154,13 @@ export const openRouterModule = {
         }
       });
       
+      logger.debug(`OpenRouter API response status: ${response.status}`);
+      
       // Process the response
       if (response.data && Array.isArray(response.data.data)) {
         const models = response.data.data;
+        logger.debug(`Received ${models.length} models from OpenRouter API`);
+        
         const freeModels: string[] = [];
         const updatedModels: Record<string, OpenRouterModel> = {};
         
@@ -155,6 +176,7 @@ export const openRouterModule = {
           // If the model is free, add it to the list
           if (isFree) {
             freeModels.push(model.id);
+            logger.debug(`Found free model: ${model.id} (${model.name || 'Unnamed'})`);
           }
           
           // Create or update the model in our tracking
@@ -197,10 +219,15 @@ export const openRouterModule = {
         await this.saveTrackingData();
         
         logger.info(`Updated OpenRouter models: ${Object.keys(updatedModels).length} total, ${freeModels.length} free`);
+        
+        if (freeModels.length === 0) {
+          logger.warn('No free models found from OpenRouter API. This might indicate an issue with the API response or pricing data.');
+        }
       } else {
         logger.warn('Invalid response from OpenRouter API:', response.data);
       }
     } catch (error) {
+      logger.error('Error updating OpenRouter models:');
       this.handleOpenRouterError(error as Error);
     }
   },
@@ -245,10 +272,22 @@ export const openRouterModule = {
    */
   async saveTrackingData(): Promise<void> {
     try {
+      logger.debug(`Saving tracking data to: ${TRACKING_FILE_PATH}`);
+      logger.debug(`Tracking data contains ${Object.keys(this.modelTracking.models).length} models and ${this.modelTracking.freeModels.length} free models`);
+      
+      // Ensure the directory exists
+      try {
+        await mkdir(path.dirname(TRACKING_FILE_PATH), { recursive: true });
+      } catch (error: any) {
+        // Ignore if directory already exists
+        logger.debug(`Directory check during save: ${error.message}`);
+      }
+      
       await fs.writeFile(TRACKING_FILE_PATH, JSON.stringify(this.modelTracking, null, 2));
-      logger.debug('Saved OpenRouter tracking data to disk');
-    } catch (error) {
-      logger.error('Error saving OpenRouter tracking data:', error);
+      logger.debug('Successfully saved OpenRouter tracking data to disk');
+    } catch (error: any) {
+      logger.error(`Error saving OpenRouter tracking data to ${TRACKING_FILE_PATH}:`, error);
+      logger.error(`Error details: ${error.message}`);
     }
   },
 
@@ -258,10 +297,22 @@ export const openRouterModule = {
   async savePromptingStrategies(): Promise<void> {
     try {
       const strategiesPath = path.join(config.rootDir, 'openrouter-strategies.json');
+      logger.debug(`Saving prompting strategies to: ${strategiesPath}`);
+      logger.debug(`Prompting strategies contains data for ${Object.keys(this.promptingStrategies).length} models`);
+      
+      // Ensure the directory exists
+      try {
+        await mkdir(path.dirname(strategiesPath), { recursive: true });
+      } catch (error: any) {
+        // Ignore if directory already exists
+        logger.debug(`Directory check during save strategies: ${error.message}`);
+      }
+      
       await fs.writeFile(strategiesPath, JSON.stringify(this.promptingStrategies, null, 2));
-      logger.debug('Saved OpenRouter prompting strategies to disk');
-    } catch (error) {
-      logger.error('Error saving OpenRouter prompting strategies:', error);
+      logger.debug('Successfully saved OpenRouter prompting strategies to disk');
+    } catch (error: any) {
+      logger.error(`Error saving OpenRouter prompting strategies to ${path.join(config.rootDir, 'openrouter-strategies.json')}:`, error);
+      logger.error(`Error details: ${error.message}`);
     }
   },
 
@@ -317,8 +368,9 @@ export const openRouterModule = {
 
   /**
    * Get free models from OpenRouter
+   * @param forceUpdate Optional flag to force update of models if no free models are found
    */
-  async getFreeModels(): Promise<Model[]> {
+  async getFreeModels(forceUpdate = false): Promise<Model[]> {
     logger.debug('Getting free models from OpenRouter');
     
     try {
@@ -332,10 +384,30 @@ export const openRouterModule = {
       const allModels = await this.getAvailableModels();
       
       // Filter for free models
-      return allModels.filter(model => {
+      const freeModels = allModels.filter(model => {
         return this.modelTracking.freeModels.includes(model.id);
       });
+      
+      logger.debug(`Found ${freeModels.length} free models out of ${allModels.length} total models`);
+      
+      // If no free models are found and forceUpdate is true, force an update
+      if (freeModels.length === 0 && forceUpdate) {
+        logger.info('No free models found, forcing update...');
+        await this.updateModels();
+        
+        // Try again after update
+        const updatedAllModels = await this.getAvailableModels();
+        const updatedFreeModels = updatedAllModels.filter(model => {
+          return this.modelTracking.freeModels.includes(model.id);
+        });
+        
+        logger.info(`After forced update: Found ${updatedFreeModels.length} free models out of ${updatedAllModels.length} total models`);
+        return updatedFreeModels;
+      }
+      
+      return freeModels;
     } catch (error) {
+      logger.error('Error getting free models from OpenRouter:');
       this.handleOpenRouterError(error as Error);
       return [];
     }
@@ -783,12 +855,46 @@ export const openRouterModule = {
     
     // 3. Response structure (paragraphs, bullet points, etc.)
     const structureScore = (
-      response.includes('\n\n') || 
-      response.includes('- ') || 
+      response.includes('\n\n') ||
+      response.includes('- ') ||
       response.includes('1. ')
     ) ? 1 : 0.7;
     
     // Combine scores with weights
     return (lengthScore * 0.4) + (codeScore * 0.3) + (structureScore * 0.3);
+  },
+
+  /**
+   * Clear tracking data and force an update
+   * This is useful for troubleshooting and for forcing a fresh update when needed
+   */
+  async clearTrackingData(): Promise<void> {
+    logger.info('Clearing OpenRouter tracking data...');
+    
+    // Reset the in-memory tracking data
+    this.modelTracking = {
+      models: {},
+      lastUpdated: '',
+      freeModels: []
+    };
+    
+    try {
+      // Delete the tracking file if it exists
+      try {
+        await fs.unlink(TRACKING_FILE_PATH).catch(() => {});
+        logger.debug('Deleted tracking file');
+      } catch (error: any) {
+        logger.debug('No tracking file to delete or error deleting file:', error.message);
+      }
+      
+      // Force an update
+      logger.info('Forcing update after clearing tracking data...');
+      await this.updateModels();
+      
+      logger.info('Successfully cleared tracking data and updated models');
+    } catch (error: any) {
+      logger.error('Error clearing tracking data:', error);
+      logger.error(`Error details: ${error.message}`);
+    }
   }
 };

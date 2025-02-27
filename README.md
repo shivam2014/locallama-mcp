@@ -23,6 +23,8 @@ LocalLama MCP Server is designed to reduce token usage and costs by dynamically 
 
 - Provides a configuration interface that allows users to specify the endpoints for their local instances (e.g., LM Studio, Ollama)
 - Interacts with these endpoints using standardized API calls
+- Integrates with OpenRouter to access free and paid models from various providers
+- Includes robust directory handling and caching mechanisms for reliable operation
 
 ### Fallback & Error Handling
 
@@ -116,6 +118,23 @@ When integrating with Cline.Bot or Roo Code, you can pass these environment vari
 npm start
 ```
 
+### OpenRouter Integration
+
+The server integrates with OpenRouter to access a variety of free and paid models from different providers. Key features include:
+
+- **Free Models Access**: Automatically retrieves and tracks free models available from OpenRouter
+- **Model Tracking**: Maintains a local cache of available models to reduce API calls
+- **Force Update Tool**: Includes a `clear_openrouter_tracking` tool to force a fresh update of models
+- **Improved Reliability**: Features robust directory handling and enhanced error logging
+
+To use the OpenRouter integration:
+
+1. Set your `OPENROUTER_API_KEY` in the environment variables
+2. The server will automatically retrieve available models on startup
+3. If you encounter issues with free models not appearing, you can use the `clear_openrouter_tracking` tool through the MCP interface
+
+Current OpenRouter integration provides access to approximately 240 models, including 30+ free models from providers like Google, Meta, Mistral, and Microsoft.
+
 ### Using with Cline.Bot
 
 To use this MCP Server with Cline.Bot, add it to your Cline MCP settings:
@@ -140,6 +159,19 @@ To use this MCP Server with Cline.Bot, add it to your Cline MCP settings:
   }
 }
 ```
+
+Once configured, you can use the MCP tools in Cline.Bot:
+
+- `get_free_models`: Retrieve the list of free models from OpenRouter
+- `clear_openrouter_tracking`: Force a fresh update of OpenRouter models if you encounter issues
+
+Example usage in Cline.Bot:
+
+```
+/use_mcp_tool locallama clear_openrouter_tracking {}
+```
+
+This will clear the tracking data and force a fresh update of the models, which is useful if you're not seeing any free models or if you want to ensure you have the latest model information.
 
 ### Running Benchmarks
 

@@ -222,20 +222,30 @@ export const costMonitor = {
   
   /**
    * Get free models from OpenRouter
+   * @param forceUpdate Optional flag to force update of models regardless of timestamp
    */
-  async getFreeModels(): Promise<Model[]> {
-    logger.debug('Getting free models');
+  async getFreeModels(forceUpdate = false): Promise<Model[]> {
+    logger.debug(`Getting free models (forceUpdate=${forceUpdate})`);
     
     try {
       // Only try to get OpenRouter models if API key is configured
       if (config.openRouterApiKey) {
         // Initialize the OpenRouter module if needed
         if (Object.keys(openRouterModule.modelTracking.models).length === 0) {
-          await openRouterModule.initialize();
+          await openRouterModule.initialize(forceUpdate);
         }
         
-        // Get free models from OpenRouter
-        return await openRouterModule.getFreeModels();
+        // Get free models from OpenRouter with forceUpdate parameter
+        const freeModels = await openRouterModule.getFreeModels(forceUpdate);
+        
+        // If no free models were found and we didn't already force an update, try clearing tracking data
+        if (freeModels.length === 0 && !forceUpdate) {
+          logger.info('No free models found, clearing tracking data and forcing update...');
+          await openRouterModule.clearTrackingData();
+          return await openRouterModule.getFreeModels();
+        }
+        
+        return freeModels;
       }
     } catch (error) {
       logger.warn('Failed to get free models from OpenRouter:', error);

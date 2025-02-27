@@ -253,6 +253,41 @@ export function setupToolHandlers(server: Server): void {
                 enum: ['speed', 'cost', 'quality'],
                 description: 'The priority for this task',
               },
+              preemptive: {
+                type: 'boolean',
+                description: 'Whether to force an update of models',
+              },
+            },
+            required: [],
+          },
+        },
+        {
+          name: 'clear_openrouter_tracking',
+          description: 'Clear OpenRouter tracking data and force an update',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task: {
+                type: 'string',
+                description: 'Unused but required for type compatibility',
+              },
+              context_length: {
+                type: 'number',
+                description: 'Unused but required for type compatibility',
+              },
+              expected_output_length: {
+                type: 'number',
+                description: 'Unused but required for type compatibility',
+              },
+              complexity: {
+                type: 'number',
+                description: 'Unused but required for type compatibility',
+              },
+              priority: {
+                type: 'string',
+                enum: ['speed', 'cost', 'quality'],
+                description: 'Unused but required for type compatibility',
+              },
             },
             required: [],
           },
@@ -646,8 +681,12 @@ export function setupToolHandlers(server: Server): void {
             await openRouterModule.initialize();
           }
           
-          // Get free models
-          const freeModels = await costMonitor.getFreeModels();
+          // Check if preemptive is set to force an update
+          const forceUpdate = args.preemptive === true;
+          logger.info(`Getting free models with forceUpdate=${forceUpdate}`);
+          
+          // Get free models with forceUpdate parameter
+          const freeModels = await costMonitor.getFreeModels(forceUpdate);
           
           return {
             content: [
@@ -784,6 +823,46 @@ export function setupToolHandlers(server: Server): void {
               {
                 type: 'text',
                 text: `Error updating prompting strategy: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+      
+      case 'clear_openrouter_tracking': {
+        try {
+          // Check if OpenRouter API key is configured
+          if (!isOpenRouterConfigured()) {
+            return {
+              content: [{ type: 'text', text: 'OpenRouter API key not configured' }],
+              isError: true,
+            };
+          }
+          
+          logger.info('Clearing OpenRouter tracking data and forcing update...');
+          
+          // Call the clearTrackingData method
+          await openRouterModule.clearTrackingData();
+          
+          // Get the updated free models
+          const freeModels = await openRouterModule.getFreeModels();
+          
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Successfully cleared OpenRouter tracking data and forced update. Found ${freeModels.length} free models.`,
+              },
+            ],
+          };
+        } catch (error) {
+          logger.error('Error clearing OpenRouter tracking data:', error);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error clearing OpenRouter tracking data: ${error instanceof Error ? error.message : String(error)}`,
               },
             ],
             isError: true,
