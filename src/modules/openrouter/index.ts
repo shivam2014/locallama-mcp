@@ -841,27 +841,108 @@ export const openRouterModule = {
 
   /**
    * Evaluate the quality of a response
+   * This is a more sophisticated heuristic for code quality
    */
   evaluateQuality(task: string, response: string): number {
-    // This is a placeholder implementation
-    // In a real implementation, this would use a more sophisticated evaluation method
+    // Check if the response contains code
+    const hasCode = response.includes('function') ||
+                    response.includes('def ') ||
+                    response.includes('class ') ||
+                    response.includes('const ') ||
+                    response.includes('let ') ||
+                    response.includes('var ');
     
-    // Simple heuristics for quality evaluation:
-    // 1. Response length relative to task length
-    const lengthScore = Math.min(1, response.length / (task.length * 0.8));
+    // Check for code blocks (markdown or other formats)
+    const hasCodeBlocks = response.includes('```') ||
+                          response.includes('    ') || // Indented code
+                          response.includes('<code>');
     
-    // 2. Response contains code if task asks for code
-    const codeScore = task.toLowerCase().includes('code') && response.includes('```') ? 1 : 0.5;
+    // Check for common programming constructs
+    const hasProgrammingConstructs =
+      response.includes('return ') ||
+      response.includes('if ') ||
+      response.includes('for ') ||
+      response.includes('while ') ||
+      response.includes('import ') ||
+      response.includes('require(') ||
+      /\w+\s*\([^)]*\)/.test(response); // Function calls
     
-    // 3. Response structure (paragraphs, bullet points, etc.)
-    const structureScore = (
-      response.includes('\n\n') ||
-      response.includes('- ') ||
-      response.includes('1. ')
-    ) ? 1 : 0.7;
+    // Check if the response is relevant to the task
+    const taskWords = task.toLowerCase().split(/\s+/);
+    const relevantWords = taskWords.filter(word =>
+      word.length > 4 &&
+      !['write', 'implement', 'create', 'design', 'develop', 'build', 'function', 'method', 'class'].includes(word)
+    );
     
-    // Combine scores with weights
-    return (lengthScore * 0.4) + (codeScore * 0.3) + (structureScore * 0.3);
+    let relevanceScore = 0;
+    if (relevantWords.length > 0) {
+      const matchCount = relevantWords.filter(word =>
+        response.toLowerCase().includes(word)
+      ).length;
+      relevanceScore = matchCount / relevantWords.length;
+    }
+    
+    // Check for explanations
+    const hasExplanation =
+      response.includes('explanation') ||
+      response.includes('explain') ||
+      response.includes('works by') ||
+      response.includes('algorithm') ||
+      response.includes('complexity') ||
+      response.includes('time complexity') ||
+      response.includes('space complexity') ||
+      response.includes('O(');
+    
+    // Check for code comments
+    const hasComments =
+      response.includes('//') ||
+      response.includes('/*') ||
+      response.includes('*/') ||
+      response.includes('#') ||
+      response.includes('"""') ||
+      response.includes("'''");
+    
+    // Response length relative to task length
+    const lengthScore = Math.min(1, response.length / (task.length * 3));
+    
+    // Combine factors with weighted scoring
+    let score = 0;
+    
+    // For coding tasks, prioritize code quality
+    if (task.toLowerCase().includes('code') ||
+        task.toLowerCase().includes('function') ||
+        task.toLowerCase().includes('algorithm') ||
+        task.toLowerCase().includes('implement')) {
+      if (hasCode) score += 0.3;
+      if (hasCodeBlocks) score += 0.2;
+      if (hasProgrammingConstructs) score += 0.2;
+      if (hasExplanation) score += 0.1;
+      if (hasComments) score += 0.1;
+      score += lengthScore * 0.1;
+    } else {
+      // For non-coding tasks, prioritize relevance and structure
+      score += relevanceScore * 0.4;
+      score += lengthScore * 0.3;
+      
+      // Check for structure (paragraphs, bullet points, etc.)
+      const hasStructure =
+        response.includes('\n\n') ||
+        response.includes('- ') ||
+        response.includes('1. ') ||
+        response.includes('* ');
+      
+      if (hasStructure) score += 0.3;
+    }
+    
+    // Add relevance score for all tasks
+    score = (score + relevanceScore) / 2;
+    
+    // Penalize very short responses
+    if (response.length < 100) {
+      score *= (response.length / 100);
+    }
+    
+    return Math.min(1, Math.max(0, score));
   },
 
   /**

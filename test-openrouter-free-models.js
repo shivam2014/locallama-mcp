@@ -120,6 +120,106 @@ async function fetchOpenRouterModels(apiKey) {
   }
 }
 
+// Test a free model with a simple task
+async function testFreeModel(apiKey, modelId) {
+  console.log(`\nTesting model: ${modelId}`);
+  
+  // Test with different complexity tasks
+  const tasks = [
+    {
+      name: "Simple function",
+      prompt: "Write a function to calculate the factorial of a number.",
+      complexity: 0.2
+    },
+    {
+      name: "Medium algorithm",
+      prompt: "Implement a binary search algorithm and explain its time complexity.",
+      complexity: 0.5
+    }
+  ];
+  
+  const results = [];
+  
+  for (const task of tasks) {
+    console.log(`\nTask: ${task.name} (complexity: ${task.complexity})`);
+    console.log(`Prompt: ${task.prompt}`);
+    
+    try {
+      const startTime = Date.now();
+      
+      const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+        model: modelId,
+        messages: [
+          { role: "system", content: "You are a helpful coding assistant." },
+          { role: "user", content: task.prompt }
+        ],
+        max_tokens: 500
+      }, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://locallama-mcp.local',
+          'X-Title': 'LocalLama MCP Diagnostic'
+        }
+      });
+      
+      const endTime = Date.now();
+      const responseTime = endTime - startTime;
+      
+      console.log(`Response time: ${responseTime}ms`);
+      console.log(`Response status: ${response.status}`);
+      
+      if (response.data && response.data.choices && response.data.choices.length > 0) {
+        const content = response.data.choices[0].message.content;
+        console.log(`Response content (first 100 chars): ${content.substring(0, 100)}...`);
+        
+        // Simple quality check - does it contain code?
+        const hasCode = content.includes('function') ||
+                        content.includes('def ') ||
+                        content.includes('class ');
+        
+        console.log(`Contains code: ${hasCode}`);
+        
+        results.push({
+          task: task.name,
+          complexity: task.complexity,
+          success: true,
+          responseTime,
+          hasCode,
+          contentPreview: content.substring(0, 100)
+        });
+      } else {
+        console.error('Invalid response format');
+        results.push({
+          task: task.name,
+          complexity: task.complexity,
+          success: false,
+          error: 'Invalid response format'
+        });
+      }
+    } catch (error) {
+      console.error('Error testing model:');
+      
+      if (error.response) {
+        console.error(`Status: ${error.response.status}`);
+        console.error(`Data: ${JSON.stringify(error.response.data, null, 2)}`);
+      } else if (error.request) {
+        console.error('No response received from server');
+      } else {
+        console.error('Error setting up request:', error.message);
+      }
+      
+      results.push({
+        task: task.name,
+        complexity: task.complexity,
+        success: false,
+        error: error.message
+      });
+    }
+  }
+  
+  return results;
+}
+
 // Main function
 async function main() {
   console.log('OpenRouter Free Models Diagnostic Tool');
@@ -136,7 +236,108 @@ async function main() {
   console.log(`Using API key: ${apiKey.substring(0, 10)}...`);
   
   // Fetch models
-  await fetchOpenRouterModels(apiKey);
+  const { freeModels } = await fetchOpenRouterModels(apiKey);
+  
+  if (freeModels.length === 0) {
+    console.log('No free models found to test.');
+    return;
+  }
+  
+  // Ask user if they want to test the free models
+  console.log('\nWould you like to test the free models? This will make API calls to OpenRouter. (y/n)');
+  
+  // Since we can't get user input in this script directly, we'll default to yes
+  // In a real scenario, you'd use readline or process.argv to get user input
+  const testModels = true;
+  
+  if (testModels) {
+    // Test a subset of free models (to avoid excessive API calls)
+    console.log('\nTesting free models with simple and medium complexity tasks...');
+    
+    // Prioritize models from well-known providers
+    const preferredProviders = ['google', 'meta-llama', 'mistralai', 'deepseek', 'microsoft'];
+    const preferredModels = freeModels.filter(model =>
+      preferredProviders.some(provider => model.id.toLowerCase().includes(provider))
+    );
+    
+    // Select up to 3 preferred models
+    const modelsToTest = preferredModels.slice(0, 3);
+    
+    // If we have fewer than 3 preferred models, add some others
+    if (modelsToTest.length < 3) {
+      const otherModels = freeModels.filter(model =>
+        !preferredProviders.some(provider => model.id.toLowerCase().includes(provider))
+      );
+      
+      modelsToTest.push(...otherModels.slice(0, 3 - modelsToTest.length));
+    }
+    
+    console.log(`Selected ${modelsToTest.length} models for testing:`);
+    modelsToTest.forEach(model => console.log(`- ${model.id} (${model.name || 'Unnamed'})`));
+    
+    // Test each model
+    const testResults = [];
+    for (const model of modelsToTest) {
+      const results = await testFreeModel(apiKey, model.id);
+      testResults.push({
+        modelId: model.id,
+        modelName: model.name || 'Unnamed',
+        results
+      });
+    }
+    
+    // Calculate performance metrics
+    const performanceData = testResults.map(result => {
+      const modelResults = result.results;
+      
+      // Calculate average response time for successful tasks
+      const successfulTasks = modelResults.filter(r => r.success);
+      const avgResponseTime = successfulTasks.length > 0
+        ? successfulTasks.reduce((sum, r) => sum + r.responseTime, 0) / successfulTasks.length
+        : 0;
+      
+      // Calculate success rate
+      const successRate = modelResults.length > 0
+        ? successfulTasks.length / modelResults.length
+        : 0;
+      
+      // Calculate code quality (percentage of responses that contain code)
+      const codeQuality = successfulTasks.length > 0
+        ? successfulTasks.filter(r => r.hasCode).length / successfulTasks.length
+        : 0;
+      
+      return {
+        modelId: result.modelId,
+        modelName: result.modelName,
+        avgResponseTime,
+        successRate,
+        codeQuality,
+        taskResults: modelResults
+      };
+    });
+    
+    // Save test results
+    await fs.writeFile('openrouter-free-models-test-results.json', JSON.stringify({
+      timestamp: new Date().toISOString(),
+      performanceData,
+      detailedResults: testResults
+    }, null, 2));
+    
+    console.log('\nTest results saved to openrouter-free-models-test-results.json');
+    
+    // Print performance summary
+    console.log('\nPerformance Summary:');
+    console.log('-------------------');
+    
+    for (const data of performanceData) {
+      console.log(`\nModel: ${data.modelName} (${data.modelId})`);
+      console.log(`Average Response Time: ${data.avgResponseTime.toFixed(0)}ms`);
+      console.log(`Success Rate: ${(data.successRate * 100).toFixed(0)}%`);
+      console.log(`Code Quality: ${(data.codeQuality * 100).toFixed(0)}%`);
+    }
+  } else {
+    console.log('Skipping model testing.');
+  }
 }
 
 // Run the main function

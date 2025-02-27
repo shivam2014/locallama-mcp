@@ -245,6 +245,43 @@ export const costMonitor = {
           return await openRouterModule.getFreeModels();
         }
         
+        // Log information about free models
+        if (freeModels.length > 0) {
+          logger.info(`Found ${freeModels.length} free models from OpenRouter`);
+          
+          // Group models by provider for better logging
+          const providerGroups: Record<string, string[]> = {};
+          for (const model of freeModels) {
+            const provider = this.getProviderFromModelId(model.id);
+            if (!providerGroups[provider]) {
+              providerGroups[provider] = [];
+            }
+            providerGroups[provider].push(model.id);
+          }
+          
+          // Log provider groups
+          for (const [provider, models] of Object.entries(providerGroups)) {
+            logger.debug(`Provider ${provider}: ${models.length} free models`);
+          }
+          
+          // Log models with large context windows
+          const largeContextModels = freeModels.filter(model =>
+            model.contextWindow && model.contextWindow >= 32000
+          );
+          
+          if (largeContextModels.length > 0) {
+            logger.debug(`Found ${largeContextModels.length} free models with large context windows (32K+):`);
+            for (const model of largeContextModels.slice(0, 5)) {
+              logger.debug(`- ${model.id} (${model.contextWindow} tokens)`);
+            }
+            if (largeContextModels.length > 5) {
+              logger.debug(`... and ${largeContextModels.length - 5} more large context models`);
+            }
+          }
+        } else {
+          logger.warn('No free models found from OpenRouter');
+        }
+        
         return freeModels;
       }
     } catch (error) {
@@ -252,6 +289,28 @@ export const costMonitor = {
     }
     
     return [];
+  },
+  
+  /**
+   * Extract provider name from model ID
+   * This is a helper function to categorize models by provider
+   */
+  getProviderFromModelId(modelId: string): string {
+    if (modelId.includes('openai')) return 'OpenAI';
+    if (modelId.includes('anthropic')) return 'Anthropic';
+    if (modelId.includes('claude')) return 'Anthropic';
+    if (modelId.includes('google')) return 'Google';
+    if (modelId.includes('gemini')) return 'Google';
+    if (modelId.includes('mistral')) return 'Mistral';
+    if (modelId.includes('meta')) return 'Meta';
+    if (modelId.includes('llama')) return 'Meta';
+    if (modelId.includes('deepseek')) return 'DeepSeek';
+    if (modelId.includes('microsoft')) return 'Microsoft';
+    if (modelId.includes('phi-3')) return 'Microsoft';
+    if (modelId.includes('qwen')) return 'Qwen';
+    if (modelId.includes('nvidia')) return 'NVIDIA';
+    if (modelId.includes('openchat')) return 'OpenChat';
+    return 'Other';
   },
   
   /**

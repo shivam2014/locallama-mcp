@@ -1,0 +1,140 @@
+{
+  "timestamp": "2025-02-27T06:42:27.882Z",
+  "performanceData": [
+    {
+      "modelId": "google/gemini-2.0-flash-lite-preview-02-05:free",
+      "modelName": "Google: Gemini Flash Lite 2.0 Preview (free)",
+      "avgResponseTime": 2202.5,
+      "successRate": 1,
+      "codeQuality": 1,
+      "taskResults": [
+        {
+          "task": "Simple function",
+          "complexity": 0.2,
+          "success": true,
+          "responseTime": 1359,
+          "hasCode": true,
+          "contentPreview": "```python\ndef factorial(n):\n  \"\"\"\n  Calculates the factorial of a non-negative integer.\n\n  Args:\n   "
+        },
+        {
+          "task": "Medium algorithm",
+          "complexity": 0.5,
+          "success": true,
+          "responseTime": 3046,
+          "hasCode": true,
+          "contentPreview": "```python\ndef binary_search(arr, target):\n    \"\"\"\n    Implements the binary search algorithm.\n\n    A"
+        }
+      ]
+    },
+    {
+      "modelId": "google/gemini-2.0-pro-exp-02-05:free",
+      "modelName": "Google: Gemini Pro 2.0 Experimental (free)",
+      "avgResponseTime": 0,
+      "successRate": 0,
+      "codeQuality": 0,
+      "taskResults": [
+        {
+          "task": "Simple function",
+          "complexity": 0.2,
+          "success": false,
+          "error": "Invalid response format"
+        },
+        {
+          "task": "Medium algorithm",
+          "complexity": 0.5,
+          "success": false,
+          "error": "Invalid response format"
+        }
+      ]
+    },
+    {
+      "modelId": "mistralai/mistral-small-24b-instruct-2501:free",
+      "modelName": "Mistral: Mistral Small 3 (free)",
+      "avgResponseTime": 5160.5,
+      "successRate": 1,
+      "codeQuality": 1,
+      "taskResults": [
+        {
+          "task": "Simple function",
+          "complexity": 0.2,
+          "success": true,
+          "responseTime": 4093,
+          "hasCode": true,
+          "contentPreview": "Sure, I can help with that! Below is a Python function to calculate the factorial of a number both i"
+        },
+        {
+          "task": "Medium algorithm",
+          "complexity": 0.5,
+          "success": true,
+          "responseTime": 6228,
+          "hasCode": true,
+          "contentPreview": "Sure! Binary search is an efficient algorithm for finding an item from a sorted list of items. It wo"
+        }
+      ]
+    }
+  ],
+  "detailedResults": [
+    {
+      "modelId": "google/gemini-2.0-flash-lite-preview-02-05:free",
+      "modelName": "Google: Gemini Flash Lite 2.0 Preview (free)",
+      "results": [
+        {
+          "task": "Simple function",
+          "complexity": 0.2,
+          "success": true,
+          "responseTime": 1359,
+          "hasCode": true,
+          "contentPreview": "```python\ndef factorial(n):\n  \"\"\"\n  Calculates the factorial of a non-negative integer.\n\n  Args:\n   "
+        },
+        {
+          "task": "Medium algorithm",
+          "complexity": 0.5,
+          "success": true,
+          "responseTime": 3046,
+          "hasCode": true,
+          "contentPreview": "```python\ndef binary_search(arr, target):\n    \"\"\"\n    Implements the binary search algorithm.\n\n    A"
+        }
+      ]
+    },
+    {
+      "modelId": "google/gemini-2.0-pro-exp-02-05:free",
+      "modelName": "Google: Gemini Pro 2.0 Experimental (free)",
+      "results": [
+        {
+          "task": "Simple function",
+          "complexity": 0.2,
+          "success": false,
+          "error": "Invalid response format"
+        },
+        {
+          "task": "Medium algorithm",
+          "complexity": 0.5,
+          "success": false,
+          "error": "Invalid response format"
+        }
+      ]
+    },
+    {
+      "modelId": "mistralai/mistral-small-24b-instruct-2501:free",
+      "modelName": "Mistral: Mistral Small 3 (free)",
+      "results": [
+        {
+          "task": "Simple function",
+          "complexity": 0.2,
+          "success": true,
+          "responseTime": 4093,
+          "hasCode": true,
+          "contentPreview": "Sure, I can help with that! Below is a Python function to calculate the factorial of a number both i"
+        },
+        {
+          "task": "Medium algorithm",
+          "complexity": 0.5,
+          "success": true,
+          "responseTime": 6228,
+          "hasCode": true,
+          "contentPreview": "Sure! Binary search is an efficient algorithm for finding an item from a sorted list of items. It wo"
+        }
+      ]
+    }
+  ]
+}
