@@ -25,6 +25,7 @@ dist-test/
 *_token
 *_password
 *credentials*
+benchmark-results/
 
 # Logs
 logs
