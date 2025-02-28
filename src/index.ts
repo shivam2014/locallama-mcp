@@ -19,7 +19,7 @@ class LocalLamaMcpServer {
     this.server = new Server(
       {
         name: 'locallama-mcp',
-        version: '0.1.0',
+        version: '1.2.7',
       },
       {
         capabilities: {
