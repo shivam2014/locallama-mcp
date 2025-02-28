@@ -1,6 +1,6 @@
-# LocalLama MCP Server
+# LocaLLama MCP Server
 
-An MCP Server that works with Cline.Bot to optimize costs by intelligently routing coding tasks between local LLMs and paid APIs.
+An MCP Server that works with Roo Code or Cline.Bot (Currently Untested with Claude Desktop or CoPilot MCP VS Code Extension) to optimize costs by intelligently routing coding tasks between local LLMs and paid APIs.
 
 ## Overview
 
