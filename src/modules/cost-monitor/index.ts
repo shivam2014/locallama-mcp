@@ -19,22 +19,115 @@ export const costMonitor = {
   async getApiUsage(api: string): Promise<ApiUsage> {
     logger.debug(`Getting usage for API: ${api}`);
     
-    // This is a placeholder implementation
-    // In a real implementation, this would query the API for usage data
-    return {
-      api,
-      tokenUsage: {
-        prompt: 1000000,
-        completion: 500000,
-        total: 1500000,
-      },
-      cost: {
-        prompt: 0.01,
-        completion: 0.02,
-        total: 0.03,
-      },
+    let result: ApiUsage;
+    
+    // Handle different API types
+    switch(api.toLowerCase()) {
+      case 'openrouter':
+        result = await this.getOpenRouterUsage();
+        break;
+      case 'lm-studio':
+        // LM Studio is local, so cost is always 0
+        result = {
+          api: 'lm-studio',
+          tokenUsage: { prompt: 0, completion: 0, total: 0 },
+          cost: { prompt: 0, completion: 0, total: 0 },
+          timestamp: new Date().toISOString(),
+        };
+        break;
+      case 'ollama':
+        // Ollama is local, so cost is always 0
+        result = {
+          api: 'ollama',
+          tokenUsage: { prompt: 0, completion: 0, total: 0 },
+          cost: { prompt: 0, completion: 0, total: 0 },
+          timestamp: new Date().toISOString(),
+        };
+        break;
+      default:
+        // Default case for unknown APIs
+        logger.debug(`No usage statistics available for API: ${api}, returning placeholder data`);
+        result = {
+          api,
+          tokenUsage: { prompt: 1000000, completion: 500000, total: 1500000 },
+          cost: { prompt: 0.01, completion: 0.02, total: 0.03 },
+          timestamp: new Date().toISOString(),
+        };
+    }
+    
+    return result;
+  },
+  
+  /**
+   * Helper method to get OpenRouter API usage
+   * Extracted to a separate method for better error handling
+   */
+  async getOpenRouterUsage(): Promise<ApiUsage> {
+    // Default response structure for OpenRouter
+    const defaultOpenRouterUsage: ApiUsage = {
+      api: 'openrouter',
+      tokenUsage: { prompt: 0, completion: 0, total: 0 },
+      cost: { prompt: 0, completion: 0, total: 0 },
       timestamp: new Date().toISOString(),
     };
+    
+    // Check if API key is configured
+    if (!config.openRouterApiKey) {
+      logger.warn('OpenRouter API key not configured, returning default usage data');
+      return defaultOpenRouterUsage;
+    }
+    
+    try {
+      // Query OpenRouter for usage statistics
+      const response = await axios.get('https://openrouter.ai/api/v1/auth/credits', {
+        headers: {
+          'Authorization': `Bearer ${config.openRouterApiKey}`,
+          'HTTP-Referer': 'https://locallama-mcp.local', // Required by OpenRouter
+          'X-Title': 'LocalLama MCP'
+        }
+      });
+      
+      if (response.data) {
+        logger.debug('Successfully retrieved OpenRouter usage data');
+        
+        // Extract credits information
+        const creditsData = response.data;
+        const creditsUsed = creditsData.used || 0;
+        const creditsRemaining = creditsData.remaining || 0;
+        const totalCredits = creditsUsed + creditsRemaining;
+        
+        // Convert credits to token estimates
+        // This is an approximation since OpenRouter reports credits, not tokens directly
+        // Average OpenAI GPT-3.5 cost is ~0.002 USD per 1K tokens
+        const averageCostPer1KTokens = 0.002;
+        const estimatedTokensUsed = Math.round((creditsUsed / averageCostPer1KTokens) * 1000);
+        
+        // Assume a typical prompt/completion ratio of 2:1
+        const promptTokens = Math.round(estimatedTokensUsed * 0.67); // 2/3 of tokens
+        const completionTokens = Math.round(estimatedTokensUsed * 0.33); // 1/3 of tokens
+        
+        return {
+          api: 'openrouter',
+          tokenUsage: {
+            prompt: promptTokens,
+            completion: completionTokens,
+            total: estimatedTokensUsed,
+          },
+          cost: {
+            prompt: creditsUsed * 0.67, // 2/3 of cost
+            completion: creditsUsed * 0.33, // 1/3 of cost
+            total: creditsUsed,
+          },
+          timestamp: new Date().toISOString(),
+        };
+      }
+    } catch (error) {
+      logger.warn('Failed to get OpenRouter usage statistics:', error);
+      openRouterModule.handleOpenRouterError(error as Error);
+    }
+    
+    // Return default if the API call fails
+    return defaultOpenRouterUsage;
   },
   
   /**
@@ -46,7 +139,7 @@ export const costMonitor = {
     const models: Model[] = [];
     
     // Model context window sizes (in tokens)
-    // These are approximate values and should be updated with accurate information
+    // These are used as fallbacks when API doesn't provide context window size
     const modelContextWindows: Record<string, number> = {
       // LM Studio models
       'llama3': 8192,
@@ -81,18 +174,37 @@ export const costMonitor = {
     
     // Try to get models from LM Studio
     try {
-      const lmStudioResponse = await axios.get(`${config.lmStudioEndpoint}/models`);
+      const lmStudioResponse = await axios.get(`${config.lmStudioEndpoint}/models`, {
+        timeout: 5000 // 5 second timeout
+      });
+      
       if (lmStudioResponse.data && Array.isArray(lmStudioResponse.data.data)) {
-        const lmStudioModels = lmStudioResponse.data.data.map((model: any) => {
+        // Define an interface for the LM Studio model response
+        interface LMStudioModel {
+          id: string;
+          name?: string;
+          context_length?: number;
+          contextWindow?: number;
+          [key: string]: any; // For any other properties
+        }
+        
+        const lmStudioModels = lmStudioResponse.data.data.map((model: LMStudioModel) => {
           // Try to determine context window size
           let contextWindow = 4096; // Default fallback
           
-          // Check if we have a known context window size for this model
-          const modelId = model.id.toLowerCase();
-          for (const [key, value] of Object.entries(modelContextWindows)) {
-            if (modelId.includes(key.toLowerCase())) {
-              contextWindow = value;
-              break;
+          // First, check if model data contains context_length 
+          if (model.context_length && typeof model.context_length === 'number') {
+            contextWindow = model.context_length;
+          } else if (model.contextWindow && typeof model.contextWindow === 'number') {
+            contextWindow = model.contextWindow;
+          } else {
+            // Fallback to known context window sizes
+            const modelId = model.id.toLowerCase();
+            for (const [key, value] of Object.entries(modelContextWindows)) {
+              if (modelId.includes(key.toLowerCase())) {
+                contextWindow = value;
+                break;
+              }
             }
           }
           
@@ -112,6 +224,7 @@ export const costMonitor = {
           };
         });
         models.push(...lmStudioModels);
+        logger.debug(`Found ${lmStudioModels.length} models from LM Studio`);
       }
     } catch (error) {
       logger.warn('Failed to get models from LM Studio:', error);
@@ -119,10 +232,20 @@ export const costMonitor = {
     
     // Try to get models from Ollama
     try {
-      const ollamaResponse = await axios.get(`${config.ollamaEndpoint}/tags`);
+      const ollamaResponse = await axios.get(`${config.ollamaEndpoint}/tags`, {
+        timeout: 5000 // 5 second timeout
+      });
+      
       if (ollamaResponse.data && Array.isArray(ollamaResponse.data.models)) {
-        const ollamaModels = ollamaResponse.data.models.map((model: any) => {
-          // Try to determine context window size
+        // Define an interface for the Ollama model response
+        interface OllamaModel {
+          name: string;
+          [key: string]: any; // For any other properties
+        }
+        
+        // First, create basic model objects
+        const ollamaModels = ollamaResponse.data.models.map((model: OllamaModel) => {
+          // Start with default context window
           let contextWindow = 4096; // Default fallback
           
           // Check if we have a known context window size for this model
@@ -132,29 +255,6 @@ export const costMonitor = {
               contextWindow = value;
               break;
             }
-          }
-          
-          // Try to get more detailed model info from Ollama
-          try {
-            // This is an async operation inside a map, which isn't ideal
-            // In a production environment, we might want to use Promise.all
-            // or restructure this to avoid the nested async call
-            axios.get(`${config.ollamaEndpoint}/show`, { params: { name: model.name } })
-              .then(response => {
-                if (response.data && response.data.parameters) {
-                  // Some Ollama models expose context_length or context_window
-                  const ctxLength = response.data.parameters.context_length ||
-                                    response.data.parameters.context_window;
-                  if (ctxLength && typeof ctxLength === 'number') {
-                    contextWindow = ctxLength;
-                  }
-                }
-              })
-              .catch(err => {
-                logger.debug(`Failed to get detailed info for Ollama model ${model.name}:`, err);
-              });
-          } catch (detailError) {
-            logger.debug(`Error getting detailed info for Ollama model ${model.name}:`, detailError);
           }
           
           return {
@@ -172,7 +272,47 @@ export const costMonitor = {
             contextWindow
           };
         });
-        models.push(...ollamaModels);
+        
+        // Then, try to get detailed model info using Promise.all
+        try {
+          const modelDetailPromises = ollamaModels.map(async (model: Model) => {
+            try {
+              const response = await axios.get(`${config.ollamaEndpoint}/show`, {
+                params: { name: model.id },
+                timeout: 3000 // 3 second timeout for each model
+              });
+              
+              if (response.data && response.data.parameters) {
+                // Some Ollama models expose context_length or context_window
+                const ctxLength = response.data.parameters.context_length ||
+                                  response.data.parameters.context_window;
+                  
+                if (ctxLength && typeof ctxLength === 'number') {
+                  logger.debug(`Updated context window for Ollama model ${model.id}: ${ctxLength}`);
+                  model.contextWindow = ctxLength;
+                }
+              }
+            } catch (detailError) {
+              logger.debug(`Failed to get detailed info for Ollama model ${model.id}`);
+            }
+            return model;
+          });
+          
+          // Wait for all model detail requests to complete (or fail)
+          const updatedOllamaModels = await Promise.allSettled(modelDetailPromises);
+          
+          // Process the results
+          const confirmedModels = updatedOllamaModels
+            .filter((result): result is PromiseFulfilledResult<Model> => result.status === 'fulfilled')
+            .map(result => result.value);
+          
+          models.push(...confirmedModels);
+          logger.debug(`Found ${confirmedModels.length} models from Ollama`);
+        } catch (batchError) {
+          // If batch processing fails, just use the basic models
+          logger.warn('Failed to get detailed info for Ollama models:', batchError);
+          models.push(...ollamaModels);
+        }
       }
     } catch (error) {
       logger.warn('Failed to get models from Ollama:', error);
@@ -215,6 +355,9 @@ export const costMonitor = {
         },
         contextWindow: 8192 // Default context window for Llama 3
       });
+      logger.warn('No models found from any provider, using default model');
+    } else {
+      logger.info(`Found a total of ${models.length} models from all providers`);
     }
     
     return models;
