@@ -5,6 +5,12 @@ import { config } from './config/index.js';
 import { setupResourceHandlers } from './modules/api-integration/resources.js';
 import { setupToolHandlers } from './modules/api-integration/tools.js';
 import { logger } from './utils/logger.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Read version from package.json
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8'));
+const version = packageJson.version;
 
 /**
  * LocalLama MCP Server
@@ -19,7 +25,7 @@ class LocalLamaMcpServer {
     this.server = new Server(
       {
         name: 'locallama-mcp',
-        version: '1.3.0',
+        version: version,
       },
       {
         capabilities: {

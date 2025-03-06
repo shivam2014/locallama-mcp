@@ -10,6 +10,12 @@ import { costMonitor } from '../cost-monitor/index.js';
 import { openRouterModule } from '../openrouter/index.js';
 import { config } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Read version from package.json
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf8'));
+const version = packageJson.version;
 
 /**
  * Check if OpenRouter API key is configured
@@ -119,7 +125,7 @@ export function setupResourceHandlers(server: Server): void {
             mimeType: 'application/json',
             text: JSON.stringify({
               status: 'running',
-              version: '1.3.0',
+              version: version,
               uptime: process.uptime(),
               timestamp: new Date().toISOString(),
             }, null, 2),
