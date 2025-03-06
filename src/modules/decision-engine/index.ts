@@ -295,7 +295,7 @@ export const decisionEngine = {
     };
     
     // Calculate scores and make routing decision based on all factors
-    const { provider, model, confidence, explanation } = await this.calculateFullRoutingDecision(
+    const { provider, model, confidence, explanation, localScore, paidScore } = await this.calculateFullRoutingDecision(
       params,
       factors,
       costEstimate,
@@ -309,8 +309,8 @@ export const decisionEngine = {
       confidence,
       explanation: explanation.trim(),
       scores: {
-        local: provider === 'local' ? confidence : 1 - confidence,
-        paid: provider === 'paid' ? confidence : 1 - confidence
+        local: localScore,
+        paid: paidScore
       }
     };
   },
@@ -324,7 +324,7 @@ export const decisionEngine = {
     factors: any,
     costEstimate: any,
     hasFreeModels: boolean
-  ): Promise<{ provider: 'local' | 'paid'; model: string; confidence: number; explanation: string }> {
+  ): Promise<{ provider: 'local' | 'paid'; model: string; confidence: number; explanation: string; localScore: number; paidScore: number }> {
     const { complexity, contextLength, expectedOutputLength, priority } = params;
     const totalTokens = contextLength + expectedOutputLength;
     
@@ -389,12 +389,13 @@ export const decisionEngine = {
       model = bestFreeModel?.id || 'gpt-3.5-turbo';
       explanation += `Selected free model ${model} based on scoring. `;
     } else {
+      // FIX: Use the provider with the highest score
       provider = localScore > paidScore ? 'local' : 'paid';
       confidence = Math.min(Math.abs(localScore - paidScore), 1.0);
       model = await this.selectModelForProvider(provider, complexity, totalTokens);
     }
 
-    return { provider, model, confidence, explanation };
+    return { provider, model, confidence, explanation, localScore, paidScore };
   },
 
   /**
