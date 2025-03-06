@@ -2,7 +2,7 @@ import { config } from '../../config/index.js';
 import { costMonitor } from '../cost-monitor/index.js';
 import { logger } from '../../utils/logger.js';
 import { Model, RoutingDecision, TaskRoutingParams, ModelPerformanceProfile } from '../../types/index.js';
-import { modelPerformanceProfiles } from './utils/modelProfiles.js';
+import { modelProfiles } from './utils/modelProfiles.js';
 import { modelSelector } from './services/modelSelector.js';
 import { codeEvaluationService } from './services/codeEvaluationService.js';
 import { benchmarkService } from './services/benchmarkService.js';
@@ -37,18 +37,12 @@ export const decisionEngine = {
       // Check for new free models that haven't been benchmarked
       if (config.openRouterApiKey) {
         try {
-          const unbenchmarkedCount = await modelSelector.getUnbenchmarkedModelCount();
-          
-          if (unbenchmarkedCount > 0) {
-            logger.info(`Found ${unbenchmarkedCount} unbenchmarked free models`);
-            
-            // Schedule benchmarking to run in the background
-            setTimeout(() => {
-              benchmarkService.benchmarkFreeModels().catch(err => {
-                logger.error('Error benchmarking free models:', err);
-              });
-            }, 5000); // Wait 5 seconds before starting benchmarks
-          }
+          // Schedule benchmarking to run in the background
+          setTimeout(() => {
+            benchmarkService.benchmarkFreeModels().catch(err => {
+              logger.error('Error benchmarking free models:', err);
+            });
+          }, 5000); // Wait 5 seconds before starting benchmarks
         } catch (error) {
           logger.error('Error checking for unbenchmarked free models:', error);
         }
@@ -325,7 +319,7 @@ export const decisionEngine = {
    * Calculate the full routing decision based on all factors
    * Helper method used by routeTask
    */
-  private async calculateFullRoutingDecision(
+  async calculateFullRoutingDecision(
     params: TaskRoutingParams,
     factors: any,
     costEstimate: any,
@@ -406,7 +400,7 @@ export const decisionEngine = {
   /**
    * Select the appropriate model based on provider and task characteristics
    */
-  private async selectModelForProvider(
+  async selectModelForProvider(
     provider: 'local' | 'paid',
     complexity: number,
     totalTokens: number
