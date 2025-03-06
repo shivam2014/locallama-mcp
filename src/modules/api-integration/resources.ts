@@ -119,7 +119,7 @@ export function setupResourceHandlers(server: Server): void {
             mimeType: 'application/json',
             text: JSON.stringify({
               status: 'running',
-              version: '1.2.5',
+              version: '1.2.7',
               uptime: process.uptime(),
               timestamp: new Date().toISOString(),
             }, null, 2),
