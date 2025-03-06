@@ -5,6 +5,7 @@ import { openRouterModule } from '../../openrouter/index.js';
 import { Model } from '../../../types/index.js';
 import { ModelsDatabase, ModelPerformanceData, COMPLEXITY_THRESHOLDS } from '../types/index.js';
 import { modelProfiles } from '../utils/modelProfiles.js';
+import { isOpenRouterConfigured } from '../../api-integration/tools.js';
 
 /**
  * Model Selector Service
@@ -16,7 +17,7 @@ export const modelSelector = {
    */
   async hasFreeModels(): Promise<boolean> {
     // Only check if OpenRouter API key is configured
-    if (!openRouterModule.isConfigured()) {
+    if (!isOpenRouterConfigured()) {
       return false;
     }
     
@@ -177,7 +178,7 @@ export const modelSelector = {
     totalTokens: number
   ): Promise<Model | null> {
     // Only check if OpenRouter API key is configured
-    if (!openRouterModule.isConfigured()) {
+    if (!isOpenRouterConfigured()) {
       return null;
     }
     

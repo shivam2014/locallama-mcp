@@ -15,7 +15,7 @@ import { config } from '../../config/index.js';
 /**
  * Check if OpenRouter API key is configured
  */
-function isOpenRouterConfigured(): boolean {
+export function isOpenRouterConfigured(): boolean {
   return !!config.openRouterApiKey;
 }
 
