@@ -59,3 +59,4 @@ temp/
 .roomodes
 mcp-interact.http
 chat.js
+chat.ts
