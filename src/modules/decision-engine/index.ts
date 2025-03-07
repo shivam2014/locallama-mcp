@@ -8,6 +8,8 @@ import { codeEvaluationService } from './services/codeEvaluationService.js';
 import { benchmarkService } from './services/benchmarkService.js';
 import { modelsDbService } from './services/modelsDb.js';
 import { COMPLEXITY_THRESHOLDS, TOKEN_THRESHOLDS } from './types/index.js';
+import { codeTaskCoordinator } from './services/codeTaskCoordinator.js';
+import { CodeTaskAnalysisOptions, DecomposedCodeTask, CodeSubtask } from './types/codeTask.js';
 
 /**
  * Decision Engine
@@ -21,6 +23,9 @@ import { COMPLEXITY_THRESHOLDS, TOKEN_THRESHOLDS } from './types/index.js';
  * - Model context window limitations
  * - Benchmark performance data
  * - Availability of free models
+ * 
+ * It also provides code task decomposition and parallelization
+ * capabilities inspired by the Minions architecture.
  */
 export const decisionEngine = {
   /**
@@ -415,6 +420,74 @@ export const decisionEngine = {
       } else {
         return 'gpt-3.5-turbo';
       }
+    }
+  },
+
+  /**
+   * Analyze a code task and break it down into subtasks
+   * 
+   * @param task The coding task to analyze
+   * @param options Options for code task analysis
+   * @returns The decomposed task with analysis results
+   */
+  async analyzeCodeTask(
+    task: string,
+    options: CodeTaskAnalysisOptions = {}
+  ): Promise<{
+    decomposedTask: DecomposedCodeTask;
+    modelAssignments: Map<string, Model>;
+    executionOrder: CodeSubtask[];
+    criticalPath: CodeSubtask[];
+    dependencyVisualization: string;
+    estimatedCost: number;
+  }> {
+    logger.info('Analyzing code task:', task);
+    
+    try {
+      // Delegate to the code task coordinator
+      return await codeTaskCoordinator.processCodeTask(task, options);
+    } catch (error) {
+      logger.error('Error analyzing code task:', error);
+      throw new Error(`Failed to analyze code task: ${error.message}`);
+    }
+  },
+
+  /**
+   * Execute a decomposed code task using assigned models
+   * 
+   * @param decomposedTask The decomposed code task
+   * @param modelAssignments The model assignments for subtasks
+   * @returns The results of execution
+   */
+  async executeCodeTask(
+    decomposedTask: DecomposedCodeTask,
+    modelAssignments: Map<string, Model>
+  ): Promise<{
+    subtaskResults: Map<string, string>;
+    synthesizedResult: string;
+  }> {
+    logger.info('Executing decomposed code task:', decomposedTask.originalTask);
+    
+    try {
+      // Execute all subtasks in order
+      const subtaskResults = await codeTaskCoordinator.executeAllSubtasks(
+        decomposedTask,
+        modelAssignments
+      );
+      
+      // Synthesize final result
+      const synthesizedResult = await codeTaskCoordinator.synthesizeFinalResult(
+        decomposedTask,
+        subtaskResults
+      );
+      
+      return {
+        subtaskResults,
+        synthesizedResult
+      };
+    } catch (error) {
+      logger.error('Error executing code task:', error);
+      throw new Error(`Failed to execute code task: ${error.message}`);
     }
   }
 };

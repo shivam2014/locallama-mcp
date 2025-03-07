@@ -5,6 +5,24 @@ import { ApiUsage, CostEstimate, Model } from '../../types/index.js';
 import { openRouterModule } from '../openrouter/index.js';
 import { getProviderFromModelId, modelContextWindows, calculateTokenEstimates } from './utils.js';
 import { getOpenRouterUsage, getAvailableModels } from './api.js';
+import { tokenManager, TokenUsage, CodeTaskContext } from './tokenManager.js';
+import { codeCache } from './codeCache.js';
+import { CodeSubtask } from '../decision-engine/types/codeTask.js';
+
+/**
+ * Code task optimization result interface
+ */
+export interface CodeTaskOptimization {
+  subtasks: CodeSubtask[];
+  cacheMatches: Record<string, { similarity: number; reuseScore: number }>;
+  contextOptimization: {
+    originalTokens: number;
+    optimizedTokens: number;
+    tokenSavings: number;
+    savingsPercentage: number;
+  };
+  tokenUsage: TokenUsage;
+}
 
 /**
  * Cost & Token Monitoring Module
@@ -13,8 +31,19 @@ import { getOpenRouterUsage, getAvailableModels } from './api.js';
  * - Monitoring token usage and costs
  * - Estimating costs for tasks
  * - Retrieving available models
+ * - Token optimization for code tasks (Phase 2 features)
  */
 export const costMonitor = {
+  /**
+   * Token manager for tracking and optimizing token usage
+   */
+  tokenManager,
+  
+  /**
+   * Code cache for storing and retrieving code snippets
+   */
+  codeCache,
+  
   /**
    * Get usage statistics for a specific API
    */
@@ -59,15 +88,12 @@ export const costMonitor = {
     
     return result;
   },
-
   async getOpenRouterUsage(): Promise<ApiUsage> {
     return getOpenRouterUsage();
   },
-
   async getAvailableModels(): Promise<Model[]> {
     return getAvailableModels();
   },
-
   /**
    * Get free models from OpenRouter
    * @param forceUpdate Optional flag to force update of models regardless of timestamp
@@ -239,4 +265,230 @@ export const costMonitor = {
       recommendation: paidCost.total > config.costThreshold ? 'local' : 'paid',
     };
   },
+
+  /**
+   * Count tokens in a string using the specified model
+   * 
+   * @param text The text to count tokens in
+   * @param model The model to use for tokenization
+   * @returns Number of tokens
+   */
+  countTokens(text: string, model: string = 'cl100k_base'): number {
+    return this.tokenManager.countTokens(text, model);
+  },
+
+  /**
+   * Count tokens in chat messages
+   * 
+   * @param messages Array of chat messages
+   * @param model The model to use for tokenization
+   * @returns Number of tokens
+   */
+  countTokensInMessages(
+    messages: Array<{ role: string; content: string; name?: string }>,
+    model: string = 'gpt-3.5-turbo'
+  ): number {
+    return this.tokenManager.countTokensInMessages(messages, model);
+  },
+
+  /**
+   * Calculate token usage with caching awareness
+   * 
+   * @param prompt Input prompt
+   * @param completion Generated completion
+   * @param model Model used
+   * @returns Token usage statistics
+   */
+  calculateUsage(prompt: string, completion: string, model: string = 'cl100k_base'): TokenUsage {
+    return this.tokenManager.calculateUsage(prompt, completion, model);
+  },
+
+  /**
+   * Calculate token usage for a code component specifically
+   * 
+   * @param code Code snippet
+   * @param componentName Name of the component (function, class, etc.)
+   * @param model Model used
+   * @returns Token usage with component tracking
+   */
+  calculateCodeUsage(code: string, componentName: string, model: string = 'cl100k_base'): TokenUsage {
+    return this.tokenManager.calculateCodeUsage(code, componentName, model);
+  },
+
+  /**
+   * Optimize a code task for token efficiency
+   * Main entry point for code-specific token optimization
+   * 
+   * @param taskDescription The code task description
+   * @param codeContext Optional context code (e.g., existing files)
+   * @param maxContextWindow Maximum context window size for the model
+   * @param model Model to use for tokenization
+   * @returns Optimized code task with subtasks and context
+   */
+  optimizeCodeTask(
+    taskDescription: string,
+    codeContext: string = "",
+    maxContextWindow: number = 8192,
+    model: string = 'cl100k_base'
+  ): CodeTaskOptimization {
+    logger.debug(`Optimizing code task with ${this.tokenManager.countTokens(taskDescription)} task tokens and ${this.tokenManager.countTokens(codeContext)} context tokens`);
+
+    // Step 1: Parse the task and context to extract useful information
+    const parsedContext = this.codeCache.analyzeCodeContext(codeContext);
+    
+    // Step 2: Split the task into smaller subtasks based on token limits
+    const subtasks = this.tokenManager.splitCodeTaskByTokens(
+      taskDescription,
+      parsedContext,
+      maxContextWindow,
+      model
+    );
+    
+    logger.debug(`Split code task into ${subtasks.length} subtasks`);
+
+    // Step 3: Find matching code snippets in the cache for each subtask
+    const cacheMatches = this.codeCache.findBestMatchesForSubtasks(subtasks);
+    
+    // Convert cache matches to a more serializable format
+    const serializedMatches: Record<string, { similarity: number; reuseScore: number }> = {};
+    cacheMatches.forEach((match, id) => {
+      serializedMatches[id] = {
+        similarity: match.similarity,
+        reuseScore: match.reuseScore
+      };
+    });
+
+    // Step 4: Optimize context for the task
+    let optimizedContext = codeContext;
+    const originalTokens = this.tokenManager.countTokens(codeContext, model);
+    
+    if (originalTokens > 0) {
+      optimizedContext = this.tokenManager.optimizeCodeContext(
+        codeContext,
+        taskDescription,
+        Math.floor(maxContextWindow * 0.7),  // Use up to 70% of context window for context
+        model
+      );
+    }
+    
+    const optimizedTokens = this.tokenManager.countTokens(optimizedContext, model);
+    
+    // Calculate token savings
+    const tokenSavings = Math.max(0, originalTokens - optimizedTokens);
+    const savingsPercentage = originalTokens > 0 
+      ? Math.round((tokenSavings / originalTokens) * 100)
+      : 0;
+    
+    logger.debug(`Context optimization: ${originalTokens} → ${optimizedTokens} tokens (${savingsPercentage}% savings)`);
+
+    // Step 5: Calculate token usage for this operation
+    const tokenUsage = new TokenUsage();
+    tokenUsage.promptTokens = this.tokenManager.countTokens(taskDescription, model);
+    
+    if (subtasks.length > 0) {
+      // Record token usage by component
+      subtasks.forEach(subtask => {
+        tokenUsage.recordComponentTokens(
+          subtask.codeType || 'unknown',
+          subtask.tokenCount || this.tokenManager.countTokens(subtask.description, model)
+        );
+      });
+    }
+
+    return {
+      subtasks,
+      cacheMatches: serializedMatches,
+      contextOptimization: {
+        originalTokens,
+        optimizedTokens,
+        tokenSavings,
+        savingsPercentage
+      },
+      tokenUsage
+    };
+  },
+
+  /**
+   * Add code to cache for future reuse
+   * 
+   * @param code The code to cache
+   * @param taskType Type of task
+   * @param codeType Type of code structure
+   * @param complexity Complexity score
+   * @returns Cache key
+   */
+  cacheCodeSnippet(
+    code: string,
+    taskType: string = 'general',
+    codeType: string = 'other',
+    complexity: number = 0.5
+  ): string {
+    return this.codeCache.add(code, taskType, codeType, complexity);
+  },
+
+  /**
+   * Find code snippets similar to a given pattern
+   * 
+   * @param code Code to find similar snippets for
+   * @param taskType Optional task type filter
+   * @param codeType Optional code type filter
+   * @param limit Maximum number of results
+   * @returns Array of matching entries
+   */
+  findSimilarCode(
+    code: string,
+    taskType?: string,
+    codeType?: string,
+    limit: number = 5
+  ): Array<{ similarity: number; code: string; codeType: string; tokenCount: number }> {
+    const pattern: CodePattern = {
+      code,
+      taskType,
+      codeType
+    };
+    
+    const results = this.codeCache.findSimilar(pattern, limit);
+    
+    return results.map(result => ({
+      similarity: result.similarity,
+      code: result.entry.code,
+      codeType: result.entry.codeType,
+      tokenCount: result.entry.tokenCount
+    }));
+  },
+
+  /**
+   * Create an optimized context for a code task with the most relevant parts
+   * 
+   * @param context Full context code
+   * @param taskDescription Task description
+   * @param maxTokens Maximum tokens for the optimized context
+   * @param model Model for tokenization
+   * @returns Optimized context string
+   */
+  createOptimizedContext(
+    context: string,
+    taskDescription: string,
+    maxTokens: number = 4096,
+    model: string = 'cl100k_base'
+  ): string {
+    return this.codeCache.createOptimizedContext(
+      context,
+      taskDescription,
+      maxTokens,
+      model
+    );
+  },
+  
+  /**
+   * Clear token and code caches
+   */
+  clearCaches(): void {
+    this.tokenManager.clearCache();
+    this.codeCache.clear();
+    logger.debug("Cleared token and code caches");
+  }
 };
+
+// Export types
+export type { TokenUsage, CodeTaskContext };

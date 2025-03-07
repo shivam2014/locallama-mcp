@@ -1,0 +1,398 @@
+import { logger } from '../../../utils/logger.js';
+import { openRouterModule } from '../../openrouter/index.js';
+import { costMonitor } from '../../cost-monitor/index.js';
+import { CodeTaskAnalysisOptions, CodeComplexityResult, DecomposedCodeTask, CodeSubtask } from '../types/codeTask.js';
+import { v4 as uuidv4 } from 'uuid';
+import { config } from '../../../config/index.js';
+import { COMPLEXITY_THRESHOLDS } from '../types/index.js';
+
+// Prompts for code task analysis
+const DECOMPOSE_TASK_PROMPT = `You are a code architecture expert helping to break down a complex coding task into smaller subtasks. 
+Analyze the following coding task and decompose it into logical, modular subtasks.
+
+Task: {task}
+
+Consider:
+1. Each subtask should be clear, focused, and achievable by a language model
+2. Identify dependencies between subtasks
+3. For each subtask, estimate complexity (0-1 scale) and token requirements
+4. Group related functionality
+5. Consider code structure (classes, functions, methods)
+
+Analyze the task thoroughly and provide a structured decomposition in JSON format.`;
+
+const COMPLEXITY_ANALYSIS_PROMPT = `You are an expert in software development complexity analysis. 
+Analyze the complexity of the following coding task:
+
+Task: {task}
+
+For this analysis:
+1. Assess algorithmic complexity (simple loops vs complex algorithms)
+2. Evaluate integration complexity (number of systems/components that need to interact)
+3. Consider domain knowledge requirements
+4. Evaluate technical requirements
+
+Provide a detailed analysis with complexity scores (0-1 scale) for each factor, an overall complexity score, and a brief explanation.`;
+
+/**
+ * Service for analyzing and decomposing code tasks
+ */
+export const codeTaskAnalyzer = {
+  /**
+   * Decompose a complex code task into smaller, more manageable subtasks
+   * 
+   * @param task The code task to decompose
+   * @param options Options for task decomposition
+   * @returns A decomposed code task with subtasks
+   */
+  async decompose(
+    task: string,
+    options: CodeTaskAnalysisOptions = {}
+  ): Promise<DecomposedCodeTask> {
+    logger.debug('Decomposing code task:', task);
+    
+    const promptOptions = {
+      maxSubtasks: options.maxSubtasks || 8,
+      granularity: options.granularity || 'medium',
+      includeTests: options.includeTests !== undefined ? options.includeTests : true,
+      tokenBudgetPerSubtask: options.tokenBudgetPerSubtask || 1500,
+    };
+    
+    try {
+      // First, analyze the complexity to determine if decomposition is necessary
+      const complexityResult = await this.analyzeComplexity(task);
+      
+      // For very simple tasks, we might not need decomposition
+      if (complexityResult.overallComplexity < COMPLEXITY_THRESHOLDS.SIMPLE && 
+          !options.maxSubtasks) {
+        return {
+          originalTask: task,
+          subtasks: [{
+            id: uuidv4(),
+            description: task,
+            complexity: complexityResult.overallComplexity,
+            estimatedTokens: 1000, // Conservative estimate for simple tasks
+            dependencies: [],
+            codeType: 'other',
+            recommendedModelSize: 'small'
+          }],
+          totalEstimatedTokens: 1000,
+          dependencyMap: {},
+          context: {
+            complexityAnalysis: complexityResult
+          }
+        };
+      }
+      
+      // For more complex tasks, use a model to decompose the task
+      // Prefer free models for decomposition if they're capable enough
+      let modelId = config.defaultLocalModel;
+      try {
+        const freeModels = await costMonitor.getFreeModels();
+        if (freeModels.length > 0) {
+          const suitableModels = freeModels.filter(model => 
+            model.id.toLowerCase().includes('instruct') || 
+            model.id.toLowerCase().includes('coder')
+          );
+          
+          if (suitableModels.length > 0) {
+            modelId = suitableModels[0].id;
+            logger.debug(`Using free model ${modelId} for task decomposition`);
+          }
+        }
+      } catch (error) {
+        logger.debug('Error getting free models, falling back to default:', error);
+      }
+      
+      // Format the prompt with the task
+      const prompt = DECOMPOSE_TASK_PROMPT.replace('{task}', task);
+      
+      const decompositionResult = await openRouterModule.callOpenRouterApi(
+        modelId,
+        prompt,
+        60000 // 60 seconds timeout
+      );
+      
+      if (!decompositionResult.success || !decompositionResult.text) {
+        logger.error('Failed to decompose task:', decompositionResult.error);
+        throw new Error('Failed to decompose task');
+      }
+      
+      // Parse the result, expecting a JSON structure
+      const subtasksRaw = this.parseSubtasksFromResponse(decompositionResult.text);
+      
+      // Process and validate subtasks
+      const subtasks: CodeSubtask[] = subtasksRaw.map(subtask => ({
+        id: subtask.id || uuidv4(),
+        description: subtask.description,
+        complexity: Math.min(Math.max(subtask.complexity || 0.5, 0), 1), // Ensure within 0-1
+        estimatedTokens: subtask.estimatedTokens || 
+          Math.round(500 + (subtask.complexity || 0.5) * 1500), // Estimate based on complexity if not provided
+        dependencies: subtask.dependencies || [],
+        codeType: subtask.codeType || 'other',
+        recommendedModelSize: this.determineRecommendedModelSize(subtask.complexity || 0.5)
+      }));
+      
+      // Generate dependency map
+      const dependencyMap: Record<string, string[]> = {};
+      subtasks.forEach(subtask => {
+        dependencyMap[subtask.id] = subtask.dependencies;
+      });
+      
+      // Calculate total estimated tokens
+      const totalEstimatedTokens = subtasks.reduce(
+        (sum, subtask) => sum + subtask.estimatedTokens, 
+        0
+      );
+      
+      return {
+        originalTask: task,
+        subtasks,
+        totalEstimatedTokens,
+        dependencyMap,
+        context: {
+          complexityAnalysis: complexityResult
+        }
+      };
+    } catch (error) {
+      logger.error('Error during code task decomposition:', error);
+      // Fallback to a simple decomposition
+      return this.createFallbackDecomposition(task);
+    }
+  },
+  
+  /**
+   * Analyze the complexity of a code task
+   * 
+   * @param task The code task to analyze
+   * @returns A complexity analysis result
+   */
+  async analyzeComplexity(task: string): Promise<CodeComplexityResult> {
+    logger.debug('Analyzing complexity of code task:', task);
+    
+    try {
+      const prompt = COMPLEXITY_ANALYSIS_PROMPT.replace('{task}', task);
+      
+      // Try to use a free model for complexity analysis
+      let modelId = config.defaultLocalModel;
+      try {
+        const freeModels = await costMonitor.getFreeModels();
+        if (freeModels.length > 0) {
+          modelId = freeModels[0].id;
+          logger.debug(`Using free model ${modelId} for complexity analysis`);
+        }
+      } catch (error) {
+        logger.debug('Error getting free models, falling back to default:', error);
+      }
+      
+      const result = await openRouterModule.callOpenRouterApi(
+        modelId,
+        prompt,
+        30000 // 30 seconds timeout
+      );
+      
+      if (!result.success || !result.text) {
+        logger.error('Failed to analyze complexity:', result.error);
+        throw new Error('Failed to analyze complexity');
+      }
+      
+      return this.parseComplexityFromResponse(result.text);
+    } catch (error) {
+      logger.error('Error during code complexity analysis:', error);
+      return {
+        overallComplexity: 0.5, // Default to medium complexity
+        factors: {
+          algorithmic: 0.5,
+          integration: 0.5,
+          domainKnowledge: 0.5,
+          technical: 0.5
+        },
+        explanation: 'Failed to analyze complexity, using default medium complexity.'
+      };
+    }
+  },
+  
+  /**
+   * Parse subtasks from the model response
+   * 
+   * @param response The model's response text
+   * @returns An array of parsed subtasks
+   */
+  parseSubtasksFromResponse(response: string): any[] {
+    try {
+      // Try to extract JSON object
+      const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || 
+                        response.match(/\{[\s\S]*?\}/);
+      
+      if (jsonMatch) {
+        const jsonStr = jsonMatch[1] || jsonMatch[0];
+        const parsed = JSON.parse(jsonStr);
+        
+        if (parsed.subtasks && Array.isArray(parsed.subtasks)) {
+          return parsed.subtasks;
+        } else if (Array.isArray(parsed)) {
+          return parsed;
+        } else {
+          return [parsed]; // Treat as a single subtask
+        }
+      }
+      
+      // Fallback to heuristic parsing if JSON extraction fails
+      const sections = response.split(/\n\s*\d+\.\s+/);
+      return sections
+        .filter(section => section.trim().length > 0)
+        .map((section, index) => {
+          const descriptionMatch = section.match(/(?:Title|Description|Task):\s*(.+?)(?:\n|$)/i);
+          const complexityMatch = section.match(/Complexity:\s*(\d+(?:\.\d+)?)/i);
+          const tokensMatch = section.match(/Tokens?:\s*(\d+)/i);
+          const dependenciesMatch = section.match(/Dependencies?:\s*(.+?)(?:\n|$)/i);
+          const typeMatch = section.match(/Type:\s*(\w+)/i);
+          
+          return {
+            id: uuidv4(),
+            description: descriptionMatch ? descriptionMatch[1].trim() : section.trim().split('\n')[0],
+            complexity: complexityMatch ? parseFloat(complexityMatch[1]) : 0.5,
+            estimatedTokens: tokensMatch ? parseInt(tokensMatch[1]) : 1000,
+            dependencies: dependenciesMatch ? 
+              dependenciesMatch[1].split(',').map(d => d.trim()) : [],
+            codeType: typeMatch ? typeMatch[1].toLowerCase() : 'other'
+          };
+        });
+    } catch (error) {
+      logger.error('Error parsing subtasks from response:', error);
+      // Return a basic subtask if parsing fails
+      return [{
+        id: uuidv4(),
+        description: 'Complete the original task',
+        complexity: 0.5,
+        estimatedTokens: 1500,
+        dependencies: [],
+        codeType: 'other'
+      }];
+    }
+  },
+  
+  /**
+   * Parse complexity analysis from the model response
+   * 
+   * @param response The model's response text
+   * @returns A complexity analysis result
+   */
+  parseComplexityFromResponse(response: string): CodeComplexityResult {
+    try {
+      // Try to extract JSON object first
+      const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || 
+                        response.match(/\{[\s\S]*?\}/);
+      
+      if (jsonMatch) {
+        const jsonStr = jsonMatch[1] || jsonMatch[0];
+        return JSON.parse(jsonStr);
+      }
+      
+      // Fall back to heuristic parsing
+      const overallMatch = response.match(/overall(?:\s+complexity)?(?:\s*score)?:\s*(\d+(?:\.\d+)?)/i);
+      const algorithmicMatch = response.match(/algorithmic(?:\s+complexity)?(?:\s*score)?:\s*(\d+(?:\.\d+)?)/i);
+      const integrationMatch = response.match(/integration(?:\s+complexity)?(?:\s*score)?:\s*(\d+(?:\.\d+)?)/i);
+      const domainMatch = response.match(/domain(?:\s+knowledge)?(?:\s*score)?:\s*(\d+(?:\.\d+)?)/i);
+      const technicalMatch = response.match(/technical(?:\s+requirements)?(?:\s*score)?:\s*(\d+(?:\.\d+)?)/i);
+      
+      return {
+        overallComplexity: overallMatch ? parseFloat(overallMatch[1]) : 0.5,
+        factors: {
+          algorithmic: algorithmicMatch ? parseFloat(algorithmicMatch[1]) : 0.5,
+          integration: integrationMatch ? parseFloat(integrationMatch[1]) : 0.5,
+          domainKnowledge: domainMatch ? parseFloat(domainMatch[1]) : 0.5,
+          technical: technicalMatch ? parseFloat(technicalMatch[1]) : 0.5
+        },
+        explanation: response.replace(/^.*?(Explanation|Analysis):/i, '').trim()
+      };
+    } catch (error) {
+      logger.error('Error parsing complexity from response:', error);
+      return {
+        overallComplexity: 0.5,
+        factors: {
+          algorithmic: 0.5,
+          integration: 0.5,
+          domainKnowledge: 0.5,
+          technical: 0.5
+        },
+        explanation: 'Failed to parse complexity analysis.'
+      };
+    }
+  },
+  
+  /**
+   * Determine the recommended model size for a subtask based on its complexity
+   * 
+   * @param complexity The complexity score (0-1)
+   * @returns The recommended model size
+   */
+  determineRecommendedModelSize(complexity: number): 'small' | 'medium' | 'large' | 'remote' {
+    if (complexity <= 0.3) return 'small';
+    if (complexity <= 0.6) return 'medium';
+    if (complexity <= 0.8) return 'large';
+    return 'remote';
+  },
+  
+  /**
+   * Create a fallback decomposition if the normal decomposition fails
+   * 
+   * @param task The original task
+   * @returns A basic decomposition
+   */
+  createFallbackDecomposition(task: string): DecomposedCodeTask {
+    // Create a simple decomposition based on task length
+    const words = task.split(/\s+/).length;
+    
+    if (words <= 20) {
+      // Very simple task, no need to decompose
+      return {
+        originalTask: task,
+        subtasks: [{
+          id: uuidv4(),
+          description: task,
+          complexity: 0.3,
+          estimatedTokens: 800,
+          dependencies: [],
+          codeType: 'other',
+          recommendedModelSize: 'small'
+        }],
+        totalEstimatedTokens: 800,
+        dependencyMap: {}
+      };
+    } else {
+      // Break into planning and implementation subtasks
+      const planningId = uuidv4();
+      const implementationId = uuidv4();
+      
+      return {
+        originalTask: task,
+        subtasks: [
+          {
+            id: planningId,
+            description: `Plan the approach for: ${task}`,
+            complexity: 0.4,
+            estimatedTokens: 1000,
+            dependencies: [],
+            codeType: 'other',
+            recommendedModelSize: 'medium'
+          },
+          {
+            id: implementationId,
+            description: `Implement the solution for: ${task}`,
+            complexity: 0.6,
+            estimatedTokens: 1500,
+            dependencies: [planningId],
+            codeType: 'other',
+            recommendedModelSize: 'large'
+          }
+        ],
+        totalEstimatedTokens: 2500,
+        dependencyMap: {
+          [planningId]: [],
+          [implementationId]: [planningId]
+        }
+      };
+    }
+  }
+};
