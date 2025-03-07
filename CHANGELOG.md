@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.5.0](https://github.com/Heratiki/locallama-mcp/compare/v1.4.0...v1.5.0) (2025-03-07)
+
+
+### Features
+
+* enhance configuration structure with detailed type definitions and validation logic ([4e7c631](https://github.com/Heratiki/locallama-mcp/commit/4e7c631e15c51804b2e2357109ae4cc2cdcb49c2))
+
 ## [1.4.0](https://github.com/Heratiki/locallama-mcp/compare/v1.3.2...v1.4.0) (2025-03-07)
 
 
