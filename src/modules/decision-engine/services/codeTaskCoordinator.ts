@@ -71,8 +71,10 @@ export const codeTaskCoordinator = {
         estimatedCost
       };
     } catch (error) {
-      logger.error('Error processing code task:', error);
-      throw new Error(`Failed to process code task: ${error.message}`);
+      if (error instanceof Error) {
+        throw new Error(`Failed to process code task: ${error.message}`);
+      }
+      throw new Error('Failed to process code task: Unknown error');
     }
   },
   
@@ -145,8 +147,10 @@ Focus only on this subtask, don't worry about other parts of the larger task.`;
       
       return result.text;
     } catch (error) {
-      logger.error('Error executing subtask:', error);
-      return `Error: Failed to execute subtask "${subtask.description}" with model "${model.id}": ${error.message}`;
+      if (error instanceof Error) {
+        return `Error: Failed to execute subtask "${subtask.description}" with model "${model.id}": ${error.message}`;
+      }
+      return `Error: Failed to execute subtask "${subtask.description}" with model "${model.id}": Unknown error`;
     }
   },
   

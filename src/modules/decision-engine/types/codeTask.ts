@@ -18,6 +18,9 @@ export interface CodeSubtask {
   /** Estimated token count required for the subtask */
   estimatedTokens: number;
   
+  /** Actual token count of the subtask */
+  tokenCount?: number;
+  
   /** Dependencies on other subtasks (by ID) */
   dependencies: string[];
   

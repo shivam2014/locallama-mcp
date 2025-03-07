@@ -6,7 +6,7 @@ import { openRouterModule } from '../openrouter/index.js';
 import { getProviderFromModelId, modelContextWindows, calculateTokenEstimates } from './utils.js';
 import { getOpenRouterUsage, getAvailableModels } from './api.js';
 import { tokenManager, TokenUsage, CodeTaskContext } from './tokenManager.js';
-import { codeCache } from './codeCache.js';
+import { codeCache, CodePattern } from './codeCache.js';
 import { CodeSubtask } from '../decision-engine/types/codeTask.js';
 
 /**

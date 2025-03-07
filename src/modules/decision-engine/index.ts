@@ -447,8 +447,10 @@ export const decisionEngine = {
       // Delegate to the code task coordinator
       return await codeTaskCoordinator.processCodeTask(task, options);
     } catch (error) {
-      logger.error('Error analyzing code task:', error);
-      throw new Error(`Failed to analyze code task: ${error.message}`);
+      if (error instanceof Error) {
+        throw new Error(`Failed to analyze code task: ${error.message}`);
+      }
+      throw new Error('Failed to analyze code task: Unknown error');
     }
   },
 
@@ -486,8 +488,10 @@ export const decisionEngine = {
         synthesizedResult
       };
     } catch (error) {
-      logger.error('Error executing code task:', error);
-      throw new Error(`Failed to execute code task: ${error.message}`);
+      if (error instanceof Error) {
+        throw new Error(`Failed to execute code task: ${error.message}`);
+      }
+      throw new Error('Failed to execute code task: Unknown error');
     }
   }
 };

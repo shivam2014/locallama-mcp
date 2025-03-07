@@ -47,6 +47,9 @@ interface CodeChunk {
   metadata?: Record<string, any>;
 }
 
+// Export interfaces
+export type { CachedCodeEntry, CodePattern, CodeCacheMatch, CodeChunk };
+
 /**
  * Service for caching and retrieving code snippets
  * This helps reduce redundant token usage for similar coding tasks
