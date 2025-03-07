@@ -748,7 +748,7 @@ export function setupToolHandlers(server: Server): void {
           }));
           
           // Run benchmarks for free models
-          const summary = await benchmarkModule.benchmarkFreeModels(tasks, config);
+          const summary = await benchmarkModule.benchmarkTasks(tasks, config);
           
           return {
             content: [
