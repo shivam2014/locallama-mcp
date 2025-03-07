@@ -36,6 +36,7 @@ LocalLama MCP Server is designed to reduce token usage and costs by dynamically 
 - Compares performance of local LLM models against paid API models
 - Measures response time, success rate, quality score, and token usage
 - Generates detailed reports for analysis and decision-making
+- Includes new tools for benchmarking free models and updating prompting strategies
 
 ## Installation
 
@@ -102,6 +103,10 @@ LOG_LEVEL=debug
 - **API Keys**
   - `OPENROUTER_API_KEY`: Your OpenRouter API key for accessing various LLM services
 
+- **New Tools**
+  - `clear_openrouter_tracking`: Clears OpenRouter tracking data and forces an update
+  - `benchmark_free_models`: Benchmarks the performance of free models from OpenRouter
+
 ### Environment Variables for Cline.Bot and Roo Code
 
 When integrating with Cline.Bot or Roo Code, you can pass these environment variables directly:
@@ -164,6 +169,7 @@ Once configured, you can use the MCP tools in Cline.Bot:
 
 - `get_free_models`: Retrieve the list of free models from OpenRouter
 - `clear_openrouter_tracking`: Force a fresh update of OpenRouter models if you encounter issues
+- `benchmark_free_models`: Benchmark the performance of free models from OpenRouter
 
 Example usage in Cline.Bot:
 
