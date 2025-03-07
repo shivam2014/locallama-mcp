@@ -1,8 +1,16 @@
 import { logger } from '../../utils/logger.js';
-import { TiktokenModel } from 'tiktoken-node';
-import { Tiktoken, getEncoding } from 'js-tiktoken';
+import { Tiktoken, getEncoding, TiktokenEncoding } from 'js-tiktoken';
 import { v4 as uuidv4 } from 'uuid';
 import { CodeSubtask } from '../decision-engine/types/codeTask.js';
+
+/**
+ * Interface for scored code sections during optimization
+ */
+interface ScoredSection {
+  content: string;
+  complexity: number;
+  relevance: number;
+}
 
 /**
  * Code task context data for token optimization
@@ -109,9 +117,32 @@ export class TokenUsage {
  * Token Manager Service
  * Handles token counting and caching for code tasks
  */
-export const tokenManager = {
+export const tokenManager: {
+  encoderCache: Map<string, Tiktoken>;
+  promptCache: Map<string, number[]>;
+  config: {
+    maxTokensPerSubtask: number;
+    defaultContextWindow: number;
+    completionTokenBuffer: number;
+    chunkOverlap: number;
+  };
+  getEncoder(model: string): Tiktoken;
+  countTokens(text: string, model?: string): number;
+  countTokensInMessages(messages: Array<{ role: string; content: string; name?: string }>, model?: string): number;
+  calculateUsage(prompt: string, completion: string, model?: string): TokenUsage;
+  calculateCodeUsage(code: string, componentName: string, model?: string): TokenUsage;
+  generateCacheKey(prompt: string): string;
+  clearCache(): void;
+  splitCodeTaskByTokens(taskDescription: string, codeContext: CodeTaskContext, maxContextWindow?: number, model?: string): CodeSubtask[];
+  identifyCodeSections(code: string): Array<{ content: string; complexity: number }>;
+  estimateComplexity(code: string): number;
+  inferCodeType(code: string): CodeSubtask['codeType'];
+  optimizeCodeContext(context: string, taskDescription: string, maxTokens?: number, model?: string): string;
+  calculateRelevance(section: string, taskDescription: string): number;
+  summarizeSection(section: string): string;
+} = {
   // Cache of encoders to avoid recreating them
-  encoderCache: new Map<TiktokenModel, Tiktoken>(),
+  encoderCache: new Map<string, Tiktoken>(),
 
   // Cache of encoded prompts to track seen tokens
   promptCache: new Map<string, number[]>(),
@@ -137,22 +168,21 @@ export const tokenManager = {
    * @param model The model to get an encoder for
    * @returns The token encoder
    */
-  getEncoder(model: TiktokenModel | string): Tiktoken {
-    const modelName = model as TiktokenModel;
-    if (this.encoderCache.has(modelName)) {
-      return this.encoderCache.get(modelName)!;
+  getEncoder(model: string): Tiktoken {
+    if (this.encoderCache.has(model)) {
+      return this.encoderCache.get(model)!;
     }
 
     try {
       // Create a new encoder
-      const encoding = getEncoding(modelName);
-      this.encoderCache.set(modelName, encoding);
+      const encoding = getEncoding(model as TiktokenEncoding);
+      this.encoderCache.set(model, encoding);
       return encoding;
     } catch (error) {
       // Fallback to cl100k_base for unknown models
       logger.warn(`Unknown model for tokenization: ${model}, falling back to cl100k_base`);
       const encoding = getEncoding('cl100k_base');
-      this.encoderCache.set(modelName, encoding);
+      this.encoderCache.set(model, encoding);
       return encoding;
     }
   },
@@ -304,83 +334,73 @@ export const tokenManager = {
    * @returns Array of code subtasks
    */
   splitCodeTaskByTokens(
+    this: typeof tokenManager,
     taskDescription: string,
     codeContext: CodeTaskContext,
     maxContextWindow: number = this.config.defaultContextWindow,
     model: string = 'cl100k_base'
   ): CodeSubtask[] {
-    // Calculate available tokens for task content
     const availableTokens = maxContextWindow - this.config.completionTokenBuffer;
     const encoder = this.getEncoder(model);
-
-    // Count tokens in the task description
     const taskTokens = encoder.encode(taskDescription).length;
 
-    // If the task fits in the context window, return it as a single subtask
     if (taskTokens <= availableTokens) {
       return [{
         id: uuidv4(),
         description: taskDescription,
         complexity: 0.5,
-        dependsOn: [],
-        codeType: 'general',
-        tokenCount: taskTokens
+        dependencies: [],
+        codeType: 'other' as const,
+        estimatedTokens: taskTokens,
+        recommendedModelSize: 'medium'
       }];
     }
 
-    // We need to split the task - identify logical splitting points
     const subtasks: CodeSubtask[] = [];
     const sections = this.identifyCodeSections(taskDescription);
-
     let currentSubtask = "";
     let currentTokens = 0;
     let currentComplexity = 0;
     let sectionCount = 0;
 
-    // Process each section and form subtasks that fit within token limits
     for (const section of sections) {
       const sectionTokens = encoder.encode(section.content).length;
-
-      // If adding this section exceeds the token limit, create a new subtask
       if (currentTokens + sectionTokens > this.config.maxTokensPerSubtask && currentSubtask !== "") {
         subtasks.push({
           id: uuidv4(),
           description: currentSubtask,
           complexity: currentComplexity / Math.max(1, sectionCount),
-          dependsOn: [],
+          dependencies: [],
           codeType: this.inferCodeType(currentSubtask),
-          tokenCount: currentTokens
+          estimatedTokens: currentTokens,
+          recommendedModelSize: 'medium'
         });
-
-        // Reset for next subtask
         currentSubtask = "";
         currentTokens = 0;
         currentComplexity = 0;
         sectionCount = 0;
       }
-
-      // Add this section to the current subtask
       currentSubtask += (currentSubtask ? "\n\n" : "") + section.content;
       currentTokens += sectionTokens;
       currentComplexity += section.complexity || 0.5;
       sectionCount++;
     }
 
-    // Add the final subtask if there's anything remaining
     if (currentSubtask !== "") {
       subtasks.push({
         id: uuidv4(),
         description: currentSubtask,
         complexity: currentComplexity / Math.max(1, sectionCount),
-        dependsOn: [],
+        dependencies: [],
         codeType: this.inferCodeType(currentSubtask),
-        tokenCount: currentTokens
+        estimatedTokens: currentTokens,
+        recommendedModelSize: 'medium'
       });
     }
 
-    // Set up dependencies between subtasks (sequential for now)
+    // Set up dependencies between subtasks
     for (let i = 1; i < subtasks.length; i++) {
-      subtasks[i].dependsOn.push(subtasks[i-1].id);
+      subtasks[i].dependencies.push(subtasks[i-1].id);
     }
 
     return subtasks;
@@ -454,7 +474,7 @@ export const tokenManager = {
    * @param code Code content
    * @returns The inferred code type
    */
-  inferCodeType(code: string): string {
+  inferCodeType(code: string): CodeSubtask['codeType'] {
     // Check for interface or type declaration
     if (/\binterface\s+\w+|type\s+\w+\s*=/i.test(code)) {
       return 'interface';
@@ -481,7 +501,7 @@ export const tokenManager = {
     }
 
     // Default
-    return 'general';
+    return 'other';
   },
 
   /**
@@ -513,8 +533,7 @@ export const tokenManager = {
 
     // Need to optimize context - identify sections by relevance
     const sections = this.identifyCodeSections(context);
-    const scoredSections = sections.map(section => {
-      // Score based on relevance to task description
+    const scoredSections = sections.map((section: { content: string; complexity: number }): ScoredSection => {
       const relevance = this.calculateRelevance(section.content, taskDescription);
       return {
         ...section,
@@ -523,7 +542,7 @@ export const tokenManager = {
     });
 
     // Sort sections by relevance (descending)
-    scoredSections.sort((a, b) => b.relevance - a.relevance);
+    scoredSections.sort((a: ScoredSection, b: ScoredSection) => b.relevance - a.relevance);
 
     // Build optimized context up to token limit
     let optimizedContext = "";
