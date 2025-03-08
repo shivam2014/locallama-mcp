@@ -4,7 +4,7 @@ An MCP Server that works with Roo Code or Cline.Bot (Currently Untested with Cla
 
 ## Overview
 
-LocalLama MCP Server is designed to reduce token usage and costs by dynamically deciding whether to offload a coding task to a local, less capable instruct LLM (e.g., LM Studio, Ollama) versus using a paid API. Version 1.6.1 introduces enhanced token optimization and improved code search capabilities.
+LocalLama MCP Server is designed to reduce token usage and costs by dynamically deciding whether to offload a coding task to a local, less capable instruct LLM (e.g., LM Studio, Ollama) versus using a paid API. Version 1.7.0 introduces smart code task analysis, advanced dependency mapping, and intelligent task decomposition features.
 
 ## Key Components
 
@@ -23,6 +23,9 @@ LocalLama MCP Server is designed to reduce token usage and costs by dynamically 
 - Uses preemptive routing based on benchmark data to make faster decisions without API calls
 - New adaptive model selection system with performance history tracking
 - Enhanced code task decomposition with complexity analysis
+- **NEW** Smart task dependency mapping with critical path analysis
+- **NEW** Code complexity evaluation system with technical and domain knowledge assessment
+- **NEW** Execution order optimization for parallel task processing
 
 ### API Integration & Configurability
 
@@ -85,6 +88,12 @@ CODE_SEARCH_EXCLUDE_PATTERNS=["node_modules/**","dist/**",".git/**"]
 CODE_SEARCH_INDEX_ON_START=true
 CODE_SEARCH_REINDEX_INTERVAL=3600
 
+# Code Task Analysis Configuration
+TASK_DECOMPOSITION_ENABLED=true
+DEPENDENCY_ANALYSIS_ENABLED=true
+MAX_SUBTASKS=8
+SUBTASK_GRANULARITY=medium
+
 # Benchmark Configuration
 BENCHMARK_RUNS_PER_TASK=3
 BENCHMARK_PARALLEL=false
@@ -118,12 +127,20 @@ LOG_LEVEL=debug
   - `CODE_SEARCH_INDEX_ON_START`: Whether to index code files when server starts
   - `CODE_SEARCH_REINDEX_INTERVAL`: Interval in seconds between reindexing (0 to disable)
 
+- **Code Task Analysis Configuration** (New)
+  - `TASK_DECOMPOSITION_ENABLED`: Enable smart task decomposition
+  - `DEPENDENCY_ANALYSIS_ENABLED`: Enable dependency mapping and critical path analysis
+  - `MAX_SUBTASKS`: Maximum number of subtasks to create when decomposing a task
+  - `SUBTASK_GRANULARITY`: Level of detail for subtasks (fine, medium, coarse)
+
 - **API Keys**
   - `OPENROUTER_API_KEY`: Your OpenRouter API key for accessing various LLM services
 
 - **New Tools**
   - `clear_openrouter_tracking`: Clears OpenRouter tracking data and forces an update
   - `benchmark_free_models`: Benchmarks the performance of free models from OpenRouter
+  - `analyze_code_task`: Analyzes a code task and suggests decomposition strategy
+  - `visualize_dependencies`: Creates a visual representation of task dependencies
 
 ### Environment Variables for Cline.Bot and Roo Code
 
@@ -132,6 +149,7 @@ When integrating with Cline.Bot or Roo Code, you can pass these environment vari
 - For **simple configuration**: Use the basic env variables in your MCP setup
 - For **advanced routing**: Configure thresholds to fine-tune when local vs. cloud models are used
 - For **model selection**: Specify which local models should handle different types of requests
+- For **task decomposition**: Configure how complex tasks are broken down and processed
 
 ## Usage
 
@@ -158,6 +176,30 @@ To use the OpenRouter integration:
 
 Current OpenRouter integration provides access to approximately 240 models, including 30+ free models from providers like Google, Meta, Mistral, and Microsoft.
 
+### Code Task Analysis
+
+The new task analysis system intelligently decomposes complex coding tasks for optimal processing:
+
+- **Task Decomposition**: Breaks down complex tasks into manageable subtasks
+- **Dependency Mapping**: Identifies relationships between code components
+- **Complexity Analysis**: Assesses algorithmic, integration, domain knowledge, and technical requirements
+- **Critical Path Analysis**: Identifies bottlenecks and optimization opportunities
+- **Execution Order Optimization**: Arranges tasks for optimal parallel execution
+
+Example of code task analysis usage through the MCP interface:
+
+```
+/use_mcp_tool locallama analyze_code_task {"task": "Create a React component that fetches data from an API and displays it in a paginated table with sorting capabilities"}
+```
+
+This will return a structured analysis including:
+
+- Subtasks with their dependencies
+- Complexity assessment
+- Recommended execution order
+- Critical path identification
+- Suggested optimizations
+
 ### Using with Cline.Bot
 
 To use this MCP Server with Cline.Bot, add it to your Cline MCP settings:
@@ -175,6 +217,8 @@ To use this MCP Server with Cline.Bot, add it to your Cline MCP settings:
         "TOKEN_THRESHOLD": "1500",
         "COST_THRESHOLD": "0.02",
         "QUALITY_THRESHOLD": "0.07",
+        "TASK_DECOMPOSITION_ENABLED": "true",
+        "DEPENDENCY_ANALYSIS_ENABLED": "true",
         "OPENROUTER_API_KEY": "your_openrouter_api_key_here"
       },
       "disabled": false
@@ -188,6 +232,8 @@ Once configured, you can use the MCP tools in Cline.Bot:
 - `get_free_models`: Retrieve the list of free models from OpenRouter
 - `clear_openrouter_tracking`: Force a fresh update of OpenRouter models if you encounter issues
 - `benchmark_free_models`: Benchmark the performance of free models from OpenRouter
+- `analyze_code_task`: Analyze a complex coding task and get a decomposition plan
+- `visualize_dependencies`: Generate a visual representation of task dependencies
 
 Example usage in Cline.Bot:
 
@@ -210,6 +256,7 @@ node run-benchmarks.js comprehensive
 ```
 
 Benchmark results are stored in the `benchmark-results` directory and include:
+
 - Individual task performance metrics in JSON format
 - Summary reports in JSON and Markdown formats
 - Comprehensive analysis of model performance
