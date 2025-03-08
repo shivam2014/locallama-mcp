@@ -68,7 +68,8 @@ export const apiHandlers = {
 
   async getRealtimeIndexStatus(): Promise<IndexStatus> {
     try {
-      const status = await costMonitor.createCodeSearchEngine().getIndexStatus();
+      // Provide workspace root to createCodeSearchEngine
+      const status = await costMonitor.createCodeSearchEngine('./').getIndexStatus();
       return {
         inProgress: status.indexing,
         filesIndexed: status.filesIndexed,
