@@ -4,6 +4,7 @@ import { COMPLEXITY_THRESHOLDS } from '../types/index.js';
 import { modelPerformanceTracker } from './modelPerformance.js';
 import { costMonitor } from '../../cost-monitor/index.js';
 import { CodeSubtask } from '../types/codeTask.js';
+import TaskExecutor from './taskExecutor.js';
 
 interface RoutingStrategy {
   name: string;
@@ -16,45 +17,50 @@ interface RoutingStrategy {
 /**
  * Enhanced service for smart task distribution and load balancing
  */
-export const taskRouter = {
-  // Enhanced routing strategies
-  strategies: {
-    costEfficient: {
-      name: 'Cost-Priority Balance',
-      prioritizeSpeed: false,
-      prioritizeQuality: false,
-      requireLocalOnly: true,
-      maximizeResourceEfficiency: false
-    },
-    qualityFirst: {
-      name: 'Quality-First Routing',
-      prioritizeSpeed: false,
-      prioritizeQuality: true,
-      requireLocalOnly: false,
-      maximizeResourceEfficiency: false
-    },
-    speedFirst: {
-      name: 'Speed-First Routing',
-      prioritizeSpeed: true,
-      prioritizeQuality: false,
-      requireLocalOnly: true,
-      maximizeResourceEfficiency: false
-    },
-    resourceEfficient: {
-      name: 'Resource-Efficient Routing',
-      prioritizeSpeed: true,
-      prioritizeQuality: false,
-      requireLocalOnly: true,
-      maximizeResourceEfficiency: true
-    }
-  },
+class TaskRouter {
+  private taskExecutor: TaskExecutor;
+  private strategies: Record<string, RoutingStrategy>;
+  private _modelLoads: Map<string, { activeTaskCount: number; lastAssignmentTime: number }>;
 
-  // Track model load for load balancing
-  _modelLoads: new Map<string, {
-    activeTaskCount: number,
-    lastAssignmentTime: number
-  }>(),
-  
+  constructor() {
+    this.taskExecutor = new TaskExecutor(5); // Example with max 5 concurrent tasks
+    this.strategies = {
+      costEfficient: {
+        name: 'Cost-Priority Balance',
+        prioritizeSpeed: false,
+        prioritizeQuality: false,
+        requireLocalOnly: true,
+        maximizeResourceEfficiency: false
+      },
+      qualityFirst: {
+        name: 'Quality-First Routing',
+        prioritizeSpeed: false,
+        prioritizeQuality: true,
+        requireLocalOnly: false,
+        maximizeResourceEfficiency: false
+      },
+      speedFirst: {
+        name: 'Speed-First Routing',
+        prioritizeSpeed: true,
+        prioritizeQuality: false,
+        requireLocalOnly: true,
+        maximizeResourceEfficiency: false
+      },
+      resourceEfficient: {
+        name: 'Resource-Efficient Routing',
+        prioritizeSpeed: true,
+        prioritizeQuality: false,
+        requireLocalOnly: true,
+        maximizeResourceEfficiency: true
+      }
+    };
+    this._modelLoads = new Map();
+  }
+
+  public routeTask(task: Task): void {
+    this.taskExecutor.addTask(task);
+  }
+
   /**
    * Get the current load for a specific model
    */
@@ -74,7 +80,7 @@ export const taskRouter = {
     }
     
     return loadData.activeTaskCount;
-  },
+  }
   
   /**
    * Update the load counter for a model
@@ -93,7 +99,7 @@ export const taskRouter = {
     
     currentLoad.lastAssignmentTime = Date.now();
     this._modelLoads.set(modelId, currentLoad);
-  },
+  }
   
   /**
    * Select the best routing strategy based on task characteristics
@@ -112,7 +118,7 @@ export const taskRouter = {
       return this.strategies.resourceEfficient;
     }
     return this.strategies.costEfficient;
-  },
+  }
 
   /**
    * Route a task to the most appropriate model with load balancing
@@ -197,7 +203,7 @@ export const taskRouter = {
       logger.error('Error routing task:', error);
       return null;
     }
-  },
+  }
 
   /**
    * Route multiple subtasks efficiently with enhanced load balancing
@@ -243,7 +249,7 @@ export const taskRouter = {
     }
     
     return routingMap;
-  },
+  }
   
   /**
    * Advanced resource-optimized routing for multiple tasks
@@ -372,7 +378,7 @@ export const taskRouter = {
     }
     
     return routingMap;
-  },
+  }
   
   /**
    * Batch similar tasks for efficient routing
@@ -465,7 +471,7 @@ export const taskRouter = {
     }
     
     return routingMap;
-  },
+  }
 
   /**
    * Update task completion status to help with load balancing
@@ -473,7 +479,7 @@ export const taskRouter = {
   notifyTaskCompletion(modelId: string): void {
     this.updateModelLoad(modelId, false);
     logger.debug(`Marked task as completed for model ${modelId}`);
-  },
+  }
 
   /**
    * Fallback model selection when no performance data is available
@@ -529,4 +535,6 @@ export const taskRouter = {
     balancedModels.sort((a, b) => a.load - b.load);
     return balancedModels[0].model;
   }
-};
+}
+
+export default TaskRouter;

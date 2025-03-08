@@ -161,3 +161,12 @@ export interface CodeTokenUsage {
   /** Total tokens used */
   totalTokens: number;
 }
+
+/**
+ * Represents a task with an id, description, and run method
+ */
+export interface Task {
+  id: string;
+  description: string;
+  run: () => Promise<void>;
+}

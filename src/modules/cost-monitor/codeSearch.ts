@@ -233,8 +233,19 @@ export class CodeSearchEngine {
           language
         });
 
-        // TODO: Consider chunking large files into smaller documents
-        // or extracting significant code snippets (functions, classes, etc.)
+        // Chunk large files into smaller documents
+        const CHUNK_SIZE = 1000; // Define chunk size (number of lines)
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
+          const chunkContent = lines.slice(i, i + CHUNK_SIZE).join('\n');
+          documents.push({
+            content: chunkContent,
+            path: filePath,
+            language,
+            startLine: i + 1,
+            endLine: Math.min(i + CHUNK_SIZE, lines.length)
+          });
+        }
       } catch (error) {
         logger.warn(`Failed to read file ${filePath}`, error);
         // Continue with the next file

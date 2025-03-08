@@ -33,6 +33,11 @@ structure:
       status: "Planned"
       completion: 0%
       file: "phases/05-performance-optimization.yaml"
+      
+    - name: "Phase 6: New Phase"
+      status: "Planned"
+      completion: 0%
+      file: "phases/06-new-phase.yaml"
 
 core_components:
   - name: "Decision Engine"
