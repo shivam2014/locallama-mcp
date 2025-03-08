@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.6.0](https://github.com/Heratiki/locallama-mcp/compare/v1.5.2...v1.6.0) (2025-03-08)
+
+
+### Features
+
+* add code search functionality with CodeSearchEngine and retriv integration ([371d1f0](https://github.com/Heratiki/locallama-mcp/commit/371d1f06f68a9066a721ae40b2e1b9f1912ae9f4))
+* enhance error handling and export interfaces in cost-monitor and decision-engine modules ([82a5aec](https://github.com/Heratiki/locallama-mcp/commit/82a5aec568c0fc9365f3c6be969a272abad0a425))
+
 ### [1.5.2](https://github.com/Heratiki/locallama-mcp/compare/v1.5.1...v1.5.2) (2025-03-07)
 
 ### [1.5.1](https://github.com/Heratiki/locallama-mcp/compare/v1.5.0...v1.5.1) (2025-03-07)
