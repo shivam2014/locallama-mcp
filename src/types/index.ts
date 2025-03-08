@@ -259,5 +259,19 @@ export interface TaskRoutingParams {
   priority: 'speed' | 'cost' | 'quality';
 }
 
+export interface ModelPerformanceData {
+  avgResponseTime: number;
+  qualityScore: number;
+  tokenEfficiency?: number;
+  systemResourceUsage?: number;
+  memoryFootprint?: number;
+  resourceHistory?: Array<{
+    timestamp: number;
+    cpuUsage: number;
+    memoryUsage: number;
+    responseTime: number;
+  }>;
+}
+
 // Export benchmark types
 export * from './benchmark.js';

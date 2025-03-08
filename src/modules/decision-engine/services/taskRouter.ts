@@ -11,7 +11,7 @@ interface RoutingStrategy {
   prioritizeSpeed: boolean;
   prioritizeQuality: boolean;
   requireLocalOnly: boolean;
-  maximizeResourceEfficiency?: boolean;
+  maximizeResourceEfficiency: boolean;
 }
 
 /**
@@ -537,4 +537,5 @@ class TaskRouter {
   }
 }
 
+export const taskRouter = new TaskRouter();
 export default TaskRouter;

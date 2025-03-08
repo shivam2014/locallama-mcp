@@ -10,6 +10,11 @@ import { modelsDbService } from './services/modelsDb.js';
 import { COMPLEXITY_THRESHOLDS, TOKEN_THRESHOLDS } from './types/index.js';
 import { codeTaskCoordinator } from './services/codeTaskCoordinator.js';
 import { CodeTaskAnalysisOptions, DecomposedCodeTask, CodeSubtask } from './types/codeTask.js';
+import { apiHandlers } from './services/apiHandlers.js';
+import { jobTracker } from './services/jobTracker.js';
+
+// Re-export the API handlers and job tracker for external use
+export { apiHandlers, jobTracker };
 
 /**
  * Decision Engine
@@ -38,6 +43,11 @@ export const decisionEngine = {
     try {
       // Initialize models database
       await modelsDbService.initialize();
+
+      // Start periodic job cleanup
+      setInterval(() => {
+        jobTracker.cleanupCompletedJobs();
+      }, 3600000); // Clean up every hour
 
       // Check for new free models that haven't been benchmarked
       if (config.openRouterApiKey) {

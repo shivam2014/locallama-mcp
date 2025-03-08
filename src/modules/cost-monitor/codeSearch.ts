@@ -32,6 +32,14 @@ export class CodeSearchEngine {
   private indexedPaths: Set<string> = new Set();
   private workspaceRoot: string;
   private initialized: boolean = false;
+  private indexingStatus = {
+    indexing: false,
+    filesIndexed: 0,
+    totalFiles: 0,
+    currentFile: undefined as string | undefined,
+    lastUpdate: Date.now(),
+    error: undefined as string | undefined
+  };
   private excludePatterns: string[] = [
     'node_modules/**',
     '.git/**',
@@ -81,18 +89,29 @@ export class CodeSearchEngine {
     }
 
     try {
+      this.indexingStatus.indexing = true;
+      this.indexingStatus.lastUpdate = Date.now();
+
       // Find all code files in the workspace
       const codeFiles = await this.findCodeFiles();
+      this.indexingStatus.totalFiles = codeFiles.length;
+      
       const newOrUpdatedFiles = forceReindex ? codeFiles : this.filterNewOrUpdatedFiles(codeFiles);
 
       if (newOrUpdatedFiles.length === 0) {
         logger.info('No new or updated files to index');
+        this.indexingStatus.indexing = false;
         return;
       }
 
       logger.info(`Indexing ${newOrUpdatedFiles.length} code files`);
 
       // Read and process each code file
+      for (const file of newOrUpdatedFiles) {
+        this.indexingStatus.currentFile = file;
+        this.indexingStatus.filesIndexed++;
+        this.indexingStatus.lastUpdate = Date.now();
+      }
       const newDocuments = await this.readCodeFiles(newOrUpdatedFiles);
       this.documents = [...this.documents.filter(doc => 
         !newOrUpdatedFiles.includes(doc.path)), ...newDocuments];
@@ -105,8 +124,12 @@ export class CodeSearchEngine {
       await this.bm25Searcher.indexDocuments(documentContents);
 
       logger.info(`Indexed ${this.documents.length} code documents successfully`);
+      this.indexingStatus.indexing = false;
+      this.indexingStatus.error = undefined;
     } catch (error) {
       logger.error('Failed to index workspace', error);
+      this.indexingStatus.error = error instanceof Error ? error.message : 'Unknown error';
+      this.indexingStatus.indexing = false;
       throw error;
     }
   }
@@ -300,6 +323,21 @@ export class CodeSearchEngine {
    */
   public getDocumentCount(): number {
     return this.documents.length;
+  }
+
+  /**
+   * Get the current indexing status
+   * @returns Status of the indexing process
+   */
+  public getIndexStatus(): {
+    indexing: boolean;
+    filesIndexed: number;
+    totalFiles: number;
+    currentFile?: string;
+    lastUpdate: number;
+    error?: string;
+  } {
+    return { ...this.indexingStatus };
   }
 
   /**

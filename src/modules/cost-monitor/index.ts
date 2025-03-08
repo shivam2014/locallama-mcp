@@ -500,6 +500,145 @@ export const costMonitor = {
   createCodeSearchEngine(workspaceRoot: string, options?: { excludePatterns?: string[] }): CodeSearchEngine {
     logger.info(`Creating code search engine for workspace: ${workspaceRoot}`);
     return new CodeSearchEngine(workspaceRoot, options);
+  },
+
+  /**
+   * Get model performance data
+   */
+  async getModelPerformanceData(): Promise<Record<string, ModelPerformanceData>> {
+    return modelsDbService.getDatabase().models;
+  },
+
+  /**
+   * Check if free models are available
+   */
+  async hasFreeModels(): Promise<boolean> {
+    const freeModels = await this.getFreeModels();
+    return freeModels.length > 0;
+  },
+
+  /**
+   * Estimate local model performance for a task
+   */
+  async estimateLocalPerformance(params: {
+    task: string;
+    context_length: number;
+    expected_output_length: number;
+    complexity: number;
+  }): Promise<{
+    avgResponseTime: number;
+    qualityScore: number;
+  }> {
+    const localModels = await this.getAvailableModels();
+    const performanceData = await this.getModelPerformanceData();
+
+    // Filter to local models with sufficient context window
+    const suitableModels = localModels.filter(model => 
+      (model.provider === 'local' || model.provider === 'lm-studio' || model.provider === 'ollama') &&
+      (!model.contextWindow || model.contextWindow >= params.context_length + params.expected_output_length)
+    );
+
+    if (suitableModels.length === 0) {
+      return {
+        avgResponseTime: 5000, // Default 5s response time
+        qualityScore: 0.8     // Default 80% quality score
+      };
+    }
+
+    // Calculate average metrics from suitable models
+    let totalResponseTime = 0;
+    let totalQualityScore = 0;
+    let modelCount = 0;
+
+    for (const model of suitableModels) {
+      const perfData = performanceData[model.id];
+      if (perfData) {
+        totalResponseTime += perfData.avgResponseTime;
+        totalQualityScore += perfData.qualityScore;
+        modelCount++;
+      }
+    }
+
+    return {
+      avgResponseTime: modelCount > 0 ? totalResponseTime / modelCount : 5000,
+      qualityScore: modelCount > 0 ? totalQualityScore / modelCount : 0.8
+    };
+  },
+
+  /**
+   * Estimate OpenRouter API model performance for a task
+   */
+  async estimateOpenRouterPerformance(params: {
+    task: string;
+    context_length: number;
+    expected_output_length: number;
+    complexity: number;
+  }): Promise<{
+    avgResponseTime: number;
+    qualityScore: number;
+    cost: number;
+  }> {
+    const costEstimate = await this.estimateCost({
+      contextLength: params.context_length,
+      outputLength: params.expected_output_length
+    });
+
+    return {
+      avgResponseTime: 2000,  // Assume 2s average response time for paid APIs
+      qualityScore: params.complexity >= 0.7 ? 0.95 : 0.9, // Higher quality for complex tasks
+      cost: costEstimate.paid.cost.total
+    };
+  },
+
+  /**
+   * Estimate free model performance for a task
+   */
+  async estimateFreeModelPerformance(params: {
+    task: string;
+    context_length: number;
+    expected_output_length: number;
+    complexity: number;
+  }): Promise<{
+    avgResponseTime: number;
+    qualityScore: number;
+  } | null> {
+    const freeModels = await this.getFreeModels();
+    const performanceData = await this.getModelPerformanceData();
+
+    // Filter to models that can handle the context
+    const suitableModels = freeModels.filter(model => 
+      !model.contextWindow || model.contextWindow >= params.context_length + params.expected_output_length
+    );
+
+    if (suitableModels.length === 0) {
+      return null;
+    }
+
+    // Calculate average metrics from suitable models
+    let totalResponseTime = 0;
+    let totalQualityScore = 0;
+    let modelCount = 0;
+
+    for (const model of suitableModels) {
+      const perfData = performanceData[model.id];
+      if (perfData) {
+        totalResponseTime += perfData.avgResponseTime;
+        totalQualityScore += perfData.qualityScore;
+        modelCount++;
+      }
+    }
+
+    if (modelCount === 0) {
+      return {
+        avgResponseTime: 3000,  // Assume 3s average for unknown free models
+        qualityScore: 0.85     // Assume 85% quality for unknown free models
+      };
+    }
+
+    return {
+      avgResponseTime: totalResponseTime / modelCount,
+      qualityScore: totalQualityScore / modelCount
+    };
   }
 };
 
