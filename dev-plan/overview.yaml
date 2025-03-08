@@ -1,0 +1,74 @@
+name: "LocalLama MCP Development Plan"
+description: "Detailed development plan for the LocalLama Model Context Protocol server implementation"
+
+principles:
+  - "Token efficiency first - optimize all operations for minimal token usage"
+  - "Safety by default - all operations are read-only unless explicitly required"
+  - "Progressive enhancement - start with basic functionality, enhance iteratively"
+  - "Modular architecture - keep components loosely coupled for easy updates"
+
+structure:
+  phases:
+    - name: "Phase 1: Code Task Analysis"
+      status: "In Progress"
+      completion: 60%
+      file: "phases/01-code-task-analysis.yaml"
+      
+    - name: "Phase 2: Token Optimization"
+      status: "Completed"
+      completion: 100%
+      file: "phases/02-token-optimization.yaml"
+      
+    - name: "Phase 3: Model Selection Enhancement"
+      status: "Pending"
+      completion: 0%
+      file: "phases/03-model-selection.yaml"
+      
+    - name: "Phase 4: Code Quality Integration"
+      status: "Pending"
+      completion: 0%
+      file: "phases/04-code-quality.yaml"
+      
+    - name: "Phase 5: Performance Optimization"
+      status: "Planned"
+      completion: 0%
+      file: "phases/05-performance-optimization.yaml"
+
+core_components:
+  - name: "Decision Engine"
+    description: "Core routing and task decomposition logic"
+    status: "Active Development"
+    
+  - name: "Cost Monitor"
+    description: "Token usage tracking and optimization"
+    status: "Stable"
+    
+  - name: "Model Coordinator"
+    description: "Model selection and task routing"
+    status: "In Development"
+    
+  - name: "Code Quality System"
+    description: "Code validation and testing framework"
+    status: "Planned"
+
+dependencies:
+  required:
+    - name: "retriv"
+      purpose: "BM25-based semantic code search"
+      status: "To be integrated"
+      
+    - name: "js-tiktoken"
+      purpose: "Token counting and management"
+      status: "Integrated"
+
+timeline:
+  current_phase: "Phase 1 & 2"
+  next_milestone: "Complete Phase 1 and begin Phase 3"
+  estimated_completion: "6-8 weeks"
+
+metrics:
+  key_performance_indicators:
+    - "Token usage efficiency"
+    - "Code quality scores"
+    - "Task completion speed"
+    - "Cost optimization ratio"
