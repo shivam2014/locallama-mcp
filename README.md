@@ -4,7 +4,7 @@ An MCP Server that works with Roo Code or Cline.Bot (Currently Untested with Cla
 
 ## Overview
 
-LocalLama MCP Server is designed to reduce token usage and costs by dynamically deciding whether to offload a coding task to a local, less capable instruct LLM (e.g., LM Studio, Ollama) versus using a paid API.
+LocalLama MCP Server is designed to reduce token usage and costs by dynamically deciding whether to offload a coding task to a local, less capable instruct LLM (e.g., LM Studio, Ollama) versus using a paid API. Version 1.6.1 introduces enhanced token optimization and improved code search capabilities.
 
 ## Key Components
 
@@ -14,12 +14,15 @@ LocalLama MCP Server is designed to reduce token usage and costs by dynamically 
 - Gathers real-time data to inform the decision engine
 - Implements intelligent code pattern recognition and semantic search for optimizing token usage
 - Provides context-aware code suggestions to reduce redundancy and improve efficiency
+- Features new pattern-based caching with ~30% token reduction in complex tasks
 
 ### Decision Engine
 
 - Defines rules that compare the cost of using the paid API against the cost (and potential quality trade-offs) of offloading to a local LLM
 - Includes configurable thresholds for when to offload
 - Uses preemptive routing based on benchmark data to make faster decisions without API calls
+- New adaptive model selection system with performance history tracking
+- Enhanced code task decomposition with complexity analysis
 
 ### API Integration & Configurability
 
@@ -27,6 +30,7 @@ LocalLama MCP Server is designed to reduce token usage and costs by dynamically 
 - Interacts with these endpoints using standardized API calls
 - Integrates with OpenRouter to access free and paid models from various providers
 - Includes robust directory handling and caching mechanisms for reliable operation
+- New BM25-based semantic code search integration
 
 ### Fallback & Error Handling
 

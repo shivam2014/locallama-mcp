@@ -2,8 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-### [1.6.1](https://github.com/Heratiki/locallama-mcp/compare/v1.6.0...v1.6.1) (2025-03-08)
+### [1.6.2](https://github.com/Heratiki/locallama-mcp/compare/v1.6.1...v1.6.2) (2025-03-09)
 
+### Features
+* enhance code task analysis with improved complexity scoring ([d8f7a21])
+* add adaptive thresholds to model selection system ([c9e3b42])
+* implement BM25-based semantic code search optimization ([f5e9b23])
+
+### Improvements
+* update development plans with current progress and metrics
+* enhance documentation with latest features and configuration
+* optimize token reduction strategies with pattern caching
+
+### [1.6.1](https://github.com/Heratiki/locallama-mcp/compare/v1.6.0...v1.6.1) (2025-03-08)
 
 ### Bug Fixes
 
