@@ -93,15 +93,37 @@ export const codeModelSelector = {
     // Context window efficiency
     if (model.contextWindow) {
       const windowEfficiency = subtask.estimatedTokens / model.contextWindow;
-      score += Math.min(1, windowEfficiency * 2); // Better score for more efficient window usage
+      // Better score for models that fit the task well without excessive unused context
+      const idealUtilization = 0.7; // Using about 70% of context window is ideal
+      score += Math.max(0, 1 - Math.abs(windowEfficiency - idealUtilization));
+    }
+
+    // Token efficiency - if tracked in model stats
+    if (modelStats?.tokenEfficiency) {
+      score += Math.min(1, modelStats.tokenEfficiency);
+    }
+
+    // System resource efficiency
+    if (modelStats?.systemResourceUsage) {
+      // Lower system resource usage gets a higher score
+      score += Math.max(0, 1 - modelStats.systemResourceUsage);
     }
 
     // Provider-based efficiency
     if (model.provider === 'local' || model.provider === 'lm-studio' || model.provider === 'ollama') {
       score += 0.3; // Local models are generally more resource-efficient
+
+      // Additional optimizations for local models
+      if (model.id.toLowerCase().includes('q4') || model.id.toLowerCase().includes('q5')) {
+        score += 0.1; // Quantized models use less memory
+      }
+
+      if (modelStats?.memoryFootprint && modelStats.memoryFootprint < 8) {
+        score += 0.1; // Models with small memory footprint (< 8GB)
+      }
     }
 
-    return score;
+    return Math.min(1, score);
   },
 
   calculateCostEffectivenessScore(model: Model, subtask: CodeSubtask): number {
@@ -136,6 +158,127 @@ export const codeModelSelector = {
     }
 
     return score;
+  },
+
+  // New method to calculate adaptive thresholds based on task complexity
+  calculateAdaptiveThresholds(subtask: CodeSubtask): {
+    minAcceptableScore: number;
+    preferLocalThreshold: number;
+  } {
+    // For complex tasks, we have higher requirements
+    if (subtask.complexity >= COMPLEXITY_THRESHOLDS.COMPLEX) {
+      return {
+        minAcceptableScore: 0.6, // Higher minimum score for complex tasks
+        preferLocalThreshold: 0.75 // Only use local if they score very well
+      };
+    }
+
+    // For medium complexity
+    if (subtask.complexity >= COMPLEXITY_THRESHOLDS.MEDIUM) {
+      return {
+        minAcceptableScore: 0.5,
+        preferLocalThreshold: 0.65
+      };
+    }
+
+    // For simple tasks
+    return {
+      minAcceptableScore: 0.4, // Lower threshold for simple tasks
+      preferLocalThreshold: 0.55
+    };
+  },
+
+  // New method to optimize resource distribution
+  async optimizeResourceUsage(
+    subtasks: CodeSubtask[],
+    availableModels: Model[]
+  ): Promise<Map<string, Model>> {
+    const assignments = new Map<string, Model>();
+    const modelLoad = new Map<string, number>(); // Track load per model
+
+    // First, determine the best model for each task ignoring load balancing
+    const idealAssignments = new Map<string, {model: Model, score: number}>();
+
+    for (const subtask of subtasks) {
+      const perfAnalysis = modelPerformanceTracker.analyzePerformanceByComplexity(
+        Math.max(0, subtask.complexity - 0.1),
+        Math.min(1, subtask.complexity + 0.1)
+      );
+
+      let bestModel = null;
+      let bestScore = 0;
+
+      for (const model of availableModels) {
+        const score = await scoreModelForSubtask(model, subtask, perfAnalysis);
+        if (score > bestScore) {
+          bestScore = score;
+          bestModel = model;
+        }
+      }
+
+      if (bestModel) {
+        idealAssignments.set(subtask.id, {model: bestModel, score: bestScore});
+      }
+    }
+
+    // Sort subtasks by complexity (highest first)
+    const sortedSubtasks = [...subtasks].sort((a, b) => b.complexity - a.complexity);
+
+    // Assign models with load balancing consideration
+    for (const subtask of sortedSubtasks) {
+      const idealAssignment = idealAssignments.get(subtask.id);
+      if (!idealAssignment) continue;
+
+      // Check the current load on the ideal model
+      const currentLoad = modelLoad.get(idealAssignment.model.id) || 0;
+
+      // If the model is already heavily loaded, find an alternative
+      if (currentLoad > 3) { // Arbitrary threshold for demonstration
+        // Find alternative models that score within 15% of the ideal
+        const alternatives = Array.from(availableModels)
+          .filter(m => m.id !== idealAssignment.model.id)
+          .filter(m => {
+            // Check context window constraints
+            if (m.contextWindow && m.contextWindow < subtask.estimatedTokens) {
+              return false;
+            }
+            return true;
+          })
+          .map(async m => {
+            const perfAnalysis = modelPerformanceTracker.analyzePerformanceByComplexity(
+              Math.max(0, subtask.complexity - 0.1),
+              Math.min(1, subtask.complexity + 0.1)
+            );
+            const score = await scoreModelForSubtask(m, subtask, perfAnalysis);
+            return { model: m, score };
+          });
+
+        const alternativeScores = await Promise.all(alternatives);
+        const viableAlternatives = alternativeScores
+          .filter(alt => alt.score >= idealAssignment.score * 0.85)
+          .sort((a, b) => {
+            // Sort by load first, then by score
+            const loadA = modelLoad.get(a.model.id) || 0;
+            const loadB = modelLoad.get(b.model.id) || 0;
+            if (loadA !== loadB) return loadA - loadB;
+            return b.score - a.score;
+          });
+
+        if (viableAlternatives.length > 0) {
+          // Use the best alternative with lower load
+          const bestAlt = viableAlternatives[0];
+          assignments.set(subtask.id, bestAlt.model);
+          modelLoad.set(bestAlt.model.id, (modelLoad.get(bestAlt.model.id) || 0) + 1);
+          continue;
+        }
+      }
+
+      // Use the ideal model if no better alternative was found
+      assignments.set(subtask.id, idealAssignment.model);
+      modelLoad.set(idealAssignment.model.id, currentLoad + 1);
+    }
+
+    return assignments;
   }
 };
 
@@ -176,7 +319,24 @@ async function findBestModelForSubtask(subtask: CodeSubtask): Promise<Model | nu
     // Sort by score (descending) and return the best model
     scoredModels.sort((a, b) => b.score - a.score);
     
-    if (scoredModels[0].score >= 0.4) { // Reasonable confidence threshold
+    // Use adaptive thresholds based on task complexity
+    const thresholds = codeModelSelector.calculateAdaptiveThresholds(subtask);
+    
+    // Try to find local model first if it scores well enough
+    const bestLocalModel = scoredModels.find(
+      m => (m.model.provider === 'local' || 
+            m.model.provider === 'lm-studio' || 
+            m.model.provider === 'ollama') && 
+           m.score >= thresholds.preferLocalThreshold
+    );
+    
+    if (bestLocalModel) {
+      logger.debug(`Selected local model for subtask: ${bestLocalModel.model.id} with score ${bestLocalModel.score}`);
+      return bestLocalModel.model;
+    }
+    
+    // If no suitable local model, use best overall if it meets minimum threshold
+    if (scoredModels[0].score >= thresholds.minAcceptableScore) {
       logger.debug(`Best model for subtask: ${scoredModels[0].model.id} with score ${scoredModels[0].score}`);
       return scoredModels[0].model;
     }
@@ -323,9 +483,16 @@ async function selectModelsForSubtasks(
   subtasks: CodeSubtask[], 
   useResourceEfficient: boolean = false
 ): Promise<Map<string, Model>> {
-  const modelAssignments = new Map<string, Model>();
-  
   if (useResourceEfficient) {
+    // Use the new optimized resource distribution method
+    const availableModels = [
+      ...(await costMonitor.getAvailableModels()),
+      ...(await costMonitor.getFreeModels())
+    ];
+    return codeModelSelector.optimizeResourceUsage(subtasks, availableModels);
+  } else {
+    const modelAssignments = new Map<string, Model>();
+    
     // Resource-efficient approach: Group similar subtasks and assign the same model
     // Group by complexity and recommended model size
     const groups = new Map<string, CodeSubtask[]>();
@@ -354,15 +521,7 @@ async function selectModelsForSubtasks(
         });
       }
     }
-  } else {
-    // Individual assignment approach: Find the best model for each subtask
-    for (const subtask of subtasks) {
-      const model = await codeModelSelector.findBestModelForSubtask(subtask);
-      if (model) {
-        modelAssignments.set(subtask.id, model);
-      }
-    }
+    
+    return modelAssignments;
   }
-  
-  return modelAssignments;
 }
