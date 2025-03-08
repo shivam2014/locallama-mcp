@@ -12,6 +12,8 @@ LocalLama MCP Server is designed to reduce token usage and costs by dynamically 
 
 - Queries the current API service for context usage, cumulative costs, API token prices, and available credits
 - Gathers real-time data to inform the decision engine
+- Implements intelligent code pattern recognition and semantic search for optimizing token usage
+- Provides context-aware code suggestions to reduce redundancy and improve efficiency
 
 ### Decision Engine
 
@@ -73,6 +75,12 @@ TOKEN_THRESHOLD=1500
 COST_THRESHOLD=0.02
 QUALITY_THRESHOLD=0.7
 
+# Code Search Configuration
+CODE_SEARCH_ENABLED=true
+CODE_SEARCH_EXCLUDE_PATTERNS=["node_modules/**","dist/**",".git/**"]
+CODE_SEARCH_INDEX_ON_START=true
+CODE_SEARCH_REINDEX_INTERVAL=3600
+
 # Benchmark Configuration
 BENCHMARK_RUNS_PER_TASK=3
 BENCHMARK_PARALLEL=false
@@ -99,6 +107,12 @@ LOG_LEVEL=debug
   - `TOKEN_THRESHOLD`: Maximum token count before considering offloading to local LLM
   - `COST_THRESHOLD`: Cost threshold (in USD) that triggers local LLM usage
   - `QUALITY_THRESHOLD`: Quality score below which to use paid APIs regardless of cost
+
+- **Code Search Configuration**
+  - `CODE_SEARCH_ENABLED`: Enable or disable semantic code search functionality
+  - `CODE_SEARCH_EXCLUDE_PATTERNS`: Patterns to exclude from code indexing (JSON array)
+  - `CODE_SEARCH_INDEX_ON_START`: Whether to index code files when server starts
+  - `CODE_SEARCH_REINDEX_INTERVAL`: Interval in seconds between reindexing (0 to disable)
 
 - **API Keys**
   - `OPENROUTER_API_KEY`: Your OpenRouter API key for accessing various LLM services
