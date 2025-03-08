@@ -81,7 +81,7 @@ export const modelPerformanceTracker = {
           memoryFootprint,
           // Resource usage history
           resourceHistory: [{
-            timestamp: Date.now(),
+            timestamp: new Date().toISOString(),
             tokenUsage: response.tokenUsage.total,
             responseTime: response.timeTaken,
             success: response.success
@@ -130,7 +130,7 @@ export const modelPerformanceTracker = {
         // Add to resource usage history (keep last 10 entries)
         const history = modelsDb.models[modelId].resourceHistory || [];
         history.push({
-          timestamp: Date.now(),
+          timestamp: new Date().toISOString(),
           tokenUsage: response.tokenUsage.total,
           responseTime: response.timeTaken,
           success: response.success
@@ -384,7 +384,7 @@ export const modelPerformanceTracker = {
    * Get resource usage history for a specific model
    */
   getResourceHistory(modelId: string): {
-    timestamp: number;
+    timestamp: string;
     tokenUsage: number;
     responseTime: number;
     success: boolean;
