@@ -196,13 +196,17 @@ export const codeTaskAnalyzer = {
       // Get detailed integration and domain factors
       const integrationFactors = await evaluateIntegrationFactors(task);
       const domainFactors = await evaluateDomainKnowledge(task);
+      const technicalFactors = await evaluateTechnicalRequirements(task);
       
       const avgIntegrationComplexity = Object.values(integrationFactors)
         .reduce((sum, val) => sum + val, 0) / Object.keys(integrationFactors).length;
       
       const avgDomainComplexity = Object.values(domainFactors)
         .reduce((sum, val) => sum + val, 0) / Object.keys(domainFactors).length;
-
+        
+      const avgTechnicalComplexity = Object.values(technicalFactors)
+        .reduce((sum, val) => sum + val, 0) / Object.keys(technicalFactors).length;
+        
       const prompt = COMPLEXITY_ANALYSIS_PROMPT.replace('{task}', task);
       
       // Try to use a free model for complexity analysis
@@ -236,18 +240,26 @@ export const codeTaskAnalyzer = {
         avgDomainComplexity
       );
 
+      // Calculate overall technical requirements score
+      const technicalRequirementsScore = Math.max(
+        llmAnalysis.factors.technical,
+        avgTechnicalComplexity
+      );
+
       // Combine LLM analysis with pattern-based analysis
       return {
         ...llmAnalysis,
         factors: {
           ...llmAnalysis.factors,
           integration: Math.max(llmAnalysis.factors.integration, avgIntegrationComplexity),
-          domainKnowledge: domainKnowledgeScore
+          domainKnowledge: domainKnowledgeScore,
+          technical: technicalRequirementsScore
         },
         metrics: {
           ...llmAnalysis.metrics,
           integrationFactors,
           domainFactors,
+          technicalFactors,
           ...llmAnalysis.metrics?.criticalPath ? { criticalPath: llmAnalysis.metrics.criticalPath } : {}
         }
       };
@@ -558,6 +570,76 @@ async function evaluateDomainKnowledge(taskDescription: string): Promise<DomainF
     }, 0);
     scores[factor as keyof DomainFactors] = Math.min(matches / patternList.length, 1);
   }
+
+  return scores;
+}
+
+/**
+ * Evaluate technical requirements complexity for a task
+ * @param taskDescription The task description to evaluate
+ * @returns Technical requirements evaluation scores
+ */
+async function evaluateTechnicalRequirements(taskDescription: string): Promise<Record<string, number>> {
+  // Define patterns to recognize different technical requirement aspects
+  const patterns = {
+    infrastructureNeeds: [
+      /\b(infrastructure|servers?|cloud|deployment|hosting)\b/i,
+      /\b(containerization|docker|kubernetes|k8s|orchestration)\b/i,
+      /\b(scaling|load balancing|high availability|failover)\b/i,
+      /\b(network|bandwidth|latency|throughput)\b/i
+    ],
+    performanceRequirements: [
+      /\b(performance|speed|fast|optimize|efficient)\b/i,
+      /\b(realtime|low latency|high throughput)\b/i,
+      /\b(response time|processing time|computation time)\b/i,
+      /\b(benchmark|metrics|SLA|service level)\b/i
+    ],
+    securityCompliance: [
+      /\b(security|authentication|authorization)\b/i,
+      /\b(encryption|hashing|secure connection|ssl|tls)\b/i,
+      /\b(compliance|GDPR|HIPAA|PCI|SOC|ISO)\b/i,
+      /\b(audit|logging|monitoring|tracking)\b/i
+    ],
+    compatibilityConstraints: [
+      /\b(compatibility|interoperable|cross-platform)\b/i,
+      /\b(browser|device|mobile|responsive)\b/i,
+      /\b(backward compatible|legacy|support|version)\b/i,
+      /\b(integration|interfaces|APIs|protocols)\b/i
+    ],
+    scalabilityRequirements: [
+      /\b(scalability|scale|growth|volume)\b/i,
+      /\b(horizontal scaling|vertical scaling|auto-scaling)\b/i,
+      /\b(concurrent|simultaneous|parallel|users)\b/i,
+      /\b(load|traffic|spike|peak|capacity)\b/i
+    ],
+    testingRequirements: [
+      /\b(testing|test suite|test cases|test coverage)\b/i,
+      /\b(unit test|integration test|system test|e2e test)\b/i,
+      /\b(QA|quality assurance|validation|verification)\b/i,
+      /\b(CI\/CD|continuous integration|continuous delivery|continuous deployment)\b/i
+    ]
+  };
+
+  const scores: Record<string, number> = {
+    infrastructureNeeds: 0,
+    performanceRequirements: 0,
+    securityCompliance: 0,
+    compatibilityConstraints: 0,
+    scalabilityRequirements: 0,
+    testingRequirements: 0
+  };
+
+  // Evaluate each technical factor based on pattern matching
+  for (const [factor, patternList] of Object.entries(patterns)) {
+    const matches = patternList.reduce((count, pattern) => {
+      return count + (pattern.test(taskDescription) ? 1 : 0);
+    }, 0);
+    scores[factor] = Math.min(matches / patternList.length, 1);
+  }
+
+  // Add a weighted complexity score based on the number of technical requirements detected
+  const requirementsDetected = Object.values(scores).filter(score => score > 0).length;
+  scores.overallTechnicalComplexity = Math.min(requirementsDetected / Object.keys(scores).length * 1.5, 1);
 
   return scores;
 }
