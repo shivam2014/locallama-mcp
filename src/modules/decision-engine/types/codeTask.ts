@@ -99,13 +99,11 @@ export interface CodeComplexityResult {
   /** Any additional metrics */
   metrics?: {
     /** Detailed integration complexity factors */
-    integrationFactors?: {
-      systemInteractions: number;
-      dataTransformations: number;
-      stateManagement: number;
-      errorHandling: number;
-      security: number;
-    };
+    integrationFactors?: IntegrationFactors;
+    
+    /** Detailed domain knowledge factors */
+    domainFactors?: DomainFactors;
+    
     /** Critical path analysis details */
     criticalPath?: {
       duration: number;
@@ -120,6 +118,28 @@ export interface CodeComplexityResult {
   
   /** Explanation of complexity analysis */
   explanation: string;
+}
+
+/**
+ * Integration complexity factors
+ */
+export interface IntegrationFactors {
+  systemInteractions: number;
+  dataTransformations: number;
+  stateManagement: number;
+  errorHandling: number;
+  security: number;
+}
+
+/**
+ * Domain knowledge factors
+ */
+export interface DomainFactors {
+  domainSpecificity: number;
+  technicalDepth: number;
+  learningCurve: number;
+  contextDependency: number;
+  standardsCompliance: number;
 }
 
 /**

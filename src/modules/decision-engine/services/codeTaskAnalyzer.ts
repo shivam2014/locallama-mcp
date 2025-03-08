@@ -1,7 +1,14 @@
 import { logger } from '../../../utils/logger.js';
 import { openRouterModule } from '../../openrouter/index.js';
 import { costMonitor } from '../../cost-monitor/index.js';
-import { CodeTaskAnalysisOptions, CodeComplexityResult, DecomposedCodeTask, CodeSubtask } from '../types/codeTask.js';
+import { 
+  CodeTaskAnalysisOptions, 
+  CodeComplexityResult, 
+  DecomposedCodeTask, 
+  CodeSubtask,
+  IntegrationFactors,
+  DomainFactors
+} from '../types/codeTask.js';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../../../config/index.js';
 import { COMPLEXITY_THRESHOLDS } from '../types/index.js';
@@ -186,10 +193,15 @@ export const codeTaskAnalyzer = {
     logger.debug('Analyzing complexity of code task:', task);
     
     try {
-      // Get detailed integration factors
+      // Get detailed integration and domain factors
       const integrationFactors = await evaluateIntegrationFactors(task);
+      const domainFactors = await evaluateDomainKnowledge(task);
+      
       const avgIntegrationComplexity = Object.values(integrationFactors)
         .reduce((sum, val) => sum + val, 0) / Object.keys(integrationFactors).length;
+      
+      const avgDomainComplexity = Object.values(domainFactors)
+        .reduce((sum, val) => sum + val, 0) / Object.keys(domainFactors).length;
 
       const prompt = COMPLEXITY_ANALYSIS_PROMPT.replace('{task}', task);
       
@@ -217,17 +229,26 @@ export const codeTaskAnalyzer = {
       }
 
       const llmAnalysis = this.parseComplexityFromResponse(result.text);
+      
+      // Calculate overall domain knowledge score
+      const domainKnowledgeScore = Math.max(
+        llmAnalysis.factors.domainKnowledge,
+        avgDomainComplexity
+      );
 
-      // Combine LLM analysis with pattern-based analysis for integration complexity
+      // Combine LLM analysis with pattern-based analysis
       return {
         ...llmAnalysis,
         factors: {
           ...llmAnalysis.factors,
-          integration: Math.max(llmAnalysis.factors.integration, avgIntegrationComplexity)
+          integration: Math.max(llmAnalysis.factors.integration, avgIntegrationComplexity),
+          domainKnowledge: domainKnowledgeScore
         },
         metrics: {
           ...llmAnalysis.metrics,
-          integrationFactors
+          integrationFactors,
+          domainFactors,
+          ...llmAnalysis.metrics?.criticalPath ? { criticalPath: llmAnalysis.metrics.criticalPath } : {}
         }
       };
     } catch (error) {
@@ -435,13 +456,7 @@ export const codeTaskAnalyzer = {
  * @param taskDescription The task description
  * @returns Detailed integration complexity factors
  */
-async function evaluateIntegrationFactors(taskDescription: string): Promise<{
-  systemInteractions: number;
-  dataTransformations: number;
-  stateManagement: number;
-  errorHandling: number;
-  security: number;
-}> {
+async function evaluateIntegrationFactors(taskDescription: string): Promise<IntegrationFactors> {
   const patterns = {
     systemInteractions: [
       /api|integrate|connect|communicate|sync|external|service/i,
@@ -468,9 +483,9 @@ async function evaluateIntegrationFactors(taskDescription: string): Promise<{
       /encrypt|decrypt|token|key/i,
       /validate|verify|protect/i
     ]
-  };
+  } as const;
 
-  const scores = {
+  const scores: IntegrationFactors = {
     systemInteractions: 0,
     dataTransformations: 0,
     stateManagement: 0,
@@ -483,7 +498,65 @@ async function evaluateIntegrationFactors(taskDescription: string): Promise<{
     const matches = patternList.reduce((count, pattern) => {
       return count + (pattern.test(taskDescription) ? 1 : 0);
     }, 0);
-    scores[factor] = Math.min(matches / patternList.length, 1);
+    scores[factor as keyof IntegrationFactors] = Math.min(matches / patternList.length, 1);
+  }
+
+  return scores;
+}
+
+/**
+ * Evaluate domain knowledge requirements for a task
+ * @param taskDescription The task description to evaluate
+ * @returns Domain knowledge evaluation scores
+ */
+async function evaluateDomainKnowledge(taskDescription: string): Promise<DomainFactors> {
+  const patterns = {
+    domainSpecificity: [
+      /business( logic| rules?| process)/i,
+      /domain[- ]specific|industry[- ]standard/i,
+      /regulatory|compliance|legal/i,
+      /(financial|medical|legal) (terms?|concepts?|rules?)/i
+    ],
+    technicalDepth: [
+      /\b(architect|design pattern|framework)\b/i,
+      /\b(optimization|performance|scaling)\b/i,
+      /\b(algorithm|data structure)\b/i,
+      /\b(security|authentication|authorization)\b/i
+    ],
+    learningCurve: [
+      /\b(complex|complicated|advanced)\b/i,
+      /\b(prerequisite|requires? knowledge)\b/i,
+      /\b(specialized|expert|proficiency)\b/i,
+      /\b(deep|thorough) understanding\b/i
+    ],
+    contextDependency: [
+      /\b(context|environment|setup)\b/i,
+      /\b(dependent|dependency|requires)\b/i,
+      /\b(configuration|settings?|parameters?)\b/i,
+      /\b(integration|interact|communicate)\b/i
+    ],
+    standardsCompliance: [
+      /\b(standard|specification|protocol)\b/i,
+      /\b(RFC|ISO|IEEE|API)\b/i,
+      /\b(convention|guideline|best practice)\b/i,
+      /\b(compatibility|compliant|adherence)\b/i
+    ]
+  } as const;
+
+  const scores: DomainFactors = {
+    domainSpecificity: 0,
+    technicalDepth: 0,
+    learningCurve: 0,
+    contextDependency: 0,
+    standardsCompliance: 0
+  };
+
+  // Evaluate each factor based on pattern matching and weight
+  for (const [factor, patternList] of Object.entries(patterns)) {
+    const matches = patternList.reduce((count, pattern) => {
+      return count + (pattern.test(taskDescription) ? 1 : 0);
+    }, 0);
+    scores[factor as keyof DomainFactors] = Math.min(matches / patternList.length, 1);
   }
 
   return scores;

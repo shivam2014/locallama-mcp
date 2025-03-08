@@ -1,5 +1,5 @@
 import { logger } from '../../../utils/logger.js';
-import { DecomposedCodeTask, CodeSubtask } from '../types/codeTask.js';
+import { DecomposedCodeTask, CodeSubtask, CodeComplexityResult } from '../types/codeTask.js';
 
 /**
  * Service for mapping dependencies between code subtasks
@@ -218,7 +218,7 @@ export const dependencyMapper = {
    */
   analyzeTaskPath(decomposedTask: DecomposedCodeTask): {
     criticalPath: CodeSubtask[];
-    metrics: NonNullable<CodeComplexityResult['metrics']>['criticalPath'];
+    metrics: Required<NonNullable<CodeComplexityResult['metrics']>>['criticalPath'];
   } {
     const criticalPath = this.findCriticalPath(decomposedTask);
     const { subtasks, dependencyMap } = decomposedTask;
