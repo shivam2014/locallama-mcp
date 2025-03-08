@@ -6,7 +6,7 @@
 
 import { spawn } from 'child_process';
 import path from 'path';
-import { logger } from '../../utils/logger';
+import { logger } from '../../utils/logger.js';
 
 export interface BM25Options {
   k1?: number; // Term saturation parameter (default: 1.5)
@@ -40,7 +40,7 @@ export class BM25Searcher {
    */
   public async initialize(): Promise<void> {
     if (this.initialized || this.initPromise) {
-      return this.initPromise;
+      return this.initPromise as Promise<void>;
     }
 
     this.initPromise = new Promise<void>((resolve, reject) => {

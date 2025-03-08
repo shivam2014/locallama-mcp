@@ -6,9 +6,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as glob from 'glob';
-import { logger } from '../../utils/logger';
-import { BM25Searcher, SearchResult } from './bm25';
+import { glob } from 'glob';
+import { logger } from '../../utils/logger.js';
+import { BM25Searcher, SearchResult } from './bm25.js';
 
 export interface CodeDocument {
   content: string;       // The actual code content
@@ -165,7 +165,7 @@ export class CodeSearchEngine {
         '**/*.yaml', '**/*.md', '**/*.xml'
       ];
 
-      const options: glob.IOptions = {
+      const options = {
         cwd: this.workspaceRoot,
         ignore: this.excludePatterns,
         absolute: true,
@@ -173,13 +173,13 @@ export class CodeSearchEngine {
       };
 
       // Use glob to find all files matching the patterns
-      glob(`{${codeFilePatterns.join(',')}}`, options, (err, files) => {
-        if (err) {
+      glob(`{${codeFilePatterns.join(',')}}`, options)
+        .then(files => {
+          resolve(files);
+        })
+        .catch(err => {
           reject(err);
-          return;
-        }
-        resolve(files);
-      });
+        });
     });
   }
 
