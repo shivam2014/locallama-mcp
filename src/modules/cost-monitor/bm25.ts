@@ -39,8 +39,12 @@ export class BM25Searcher {
    * Initialize the Python retriv process
    */
   public async initialize(): Promise<void> {
-    if (this.initialized || this.initPromise) {
-      return this.initPromise as Promise<void>;
+    if (this.initialized) {
+      return Promise.resolve(); // Or simply: return;
+    }
+
+    if (this.initPromise) {
+      return this.initPromise;
     }
 
     this.initPromise = new Promise<void>((resolve, reject) => {
