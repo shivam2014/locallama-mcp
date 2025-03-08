@@ -1,9 +1,10 @@
+import path from 'path';
 import { logger } from '../../../utils/logger.js';
 import { codeTaskAnalyzer } from './codeTaskAnalyzer.js';
 import { dependencyMapper } from './dependencyMapper.js';
 import { codeModelSelector } from './codeModelSelector.js';
 import { openRouterModule } from '../../openrouter/index.js';
-import { costMonitor } from '../../cost-monitor/index.js';
+import { costMonitor, CodeSearchEngine, CodeSearchResult } from '../../cost-monitor/index.js';
 import { CodeTaskAnalysisOptions, DecomposedCodeTask, CodeSubtask } from '../types/codeTask.js';
 import { Model } from '../../../types/index.js';
 
@@ -12,6 +13,70 @@ import { Model } from '../../../types/index.js';
  * This is the main entry point for code task decomposition and model selection
  */
 export const codeTaskCoordinator = {
+  // Private properties
+  _codeSearchEngine: null as CodeSearchEngine | null,
+  
+  /**
+   * Initialize the code search engine
+   * @param workspacePath The root path of the workspace to index
+   */
+  async initializeCodeSearch(workspacePath?: string): Promise<void> {
+    if (this._codeSearchEngine) {
+      return; // Already initialized
+    }
+    
+    try {
+      // Use the provided workspace path or default to current directory
+      const rootPath = workspacePath || process.cwd();
+      logger.info(`Initializing code search engine for workspace: ${rootPath}`);
+      
+      // Create and initialize the code search engine
+      this._codeSearchEngine = costMonitor.createCodeSearchEngine(rootPath);
+      await this._codeSearchEngine.initialize();
+      
+      // Index all code files in the workspace
+      logger.info('Indexing workspace code files...');
+      await this._codeSearchEngine.indexWorkspace();
+      
+      const docCount = this._codeSearchEngine.getDocumentCount();
+      logger.info(`Successfully indexed ${docCount} code files for semantic search`);
+    } catch (error) {
+      logger.error('Failed to initialize code search engine:', error);
+      this._codeSearchEngine = null;
+      // We don't throw here - the system should work even if code search fails
+    }
+  },
+  
+  /**
+   * Search for relevant code snippets using the BM25 algorithm
+   * @param query The search query - typically a subtask description
+   * @param limit Maximum number of results to return
+   * @returns Array of search results or empty array if search failed
+   */
+  async searchRelevantCode(query: string, limit: number = 3): Promise<CodeSearchResult[]> {
+    if (!this._codeSearchEngine) {
+      try {
+        await this.initializeCodeSearch();
+      } catch (error) {
+        logger.warn('Could not initialize code search engine for query', error);
+        return [];
+      }
+    }
+    
+    if (!this._codeSearchEngine) {
+      return []; // Still failed to initialize
+    }
+    
+    try {
+      // Perform the search
+      const results = await this._codeSearchEngine.search(query, limit);
+      return results;
+    } catch (error) {
+      logger.warn('Error searching for code:', error);
+      return [];
+    }
+  },
+
   /**
    * Process a coding task from start to finish
    * 
@@ -33,6 +98,11 @@ export const codeTaskCoordinator = {
     logger.info('Processing code task:', task);
     
     try {
+      // Initialize code search if not already done
+      if (!this._codeSearchEngine && options.workspacePath) {
+        await this.initializeCodeSearch(options.workspacePath);
+      }
+      
       // Step 1: Decompose the task into subtasks
       const decomposedTask = await codeTaskAnalyzer.decompose(task, options);
       logger.info(`Decomposed task into ${decomposedTask.subtasks.length} subtasks`);
@@ -122,14 +192,35 @@ export const codeTaskCoordinator = {
     model: Model,
     fullContext?: string
   ): Promise<string> {
+    // Search for relevant code snippets before execution
+    let relevantCodeSnippets = '';
+    
+    try {
+      // Only search if code search is available and the subtask is appropriate for snippets
+      if (this._codeSearchEngine && ['function', 'class', 'method', 'component'].includes(subtask.codeType || '')) {
+        logger.info(`Searching for relevant code snippets for subtask: ${subtask.id}`);
+        const searchResults = await this.searchRelevantCode(subtask.description);
+        
+        if (searchResults.length > 0) {
+          relevantCodeSnippets = '\n\nRelevant code snippets that may help with this task:\n\n';
+          searchResults.forEach((result, index) => {
+            relevantCodeSnippets += `Snippet ${index + 1} (from ${result.relativePath || 'unknown'}):\n`;
+            relevantCodeSnippets += '```\n' + result.content.substring(0, 800) + '\n```\n\n';
+          });
+        }
+      }
+    } catch (error) {
+      // Just log the error, don't fail the subtask execution
+      logger.warn('Error finding relevant code snippets:', error);
+    }
+    
     // Create a clear, focused prompt for the subtask
     const prompt = `You are tasked with implementing the following specific part of a larger coding task:
     
 Task: ${subtask.description}
-
 ${fullContext ? `Context:\n${fullContext}\n\n` : ''}Code Type: ${subtask.codeType}
 Complexity: ${subtask.complexity.toFixed(2)} (0-1 scale)
-
+${relevantCodeSnippets}
 Please provide a well-structured, high-quality implementation for this specific part of the task.
 Focus only on this subtask, don't worry about other parts of the larger task.`;
     
@@ -260,12 +351,9 @@ Focus only on this subtask, don't worry about other parts of the larger task.`;
       
       const synthesisPrompt = `I've broken down a coding task into subtasks and have results for each. 
 Please synthesize these into a coherent final solution.
-
 Original Task: ${decomposedTask.originalTask}
-
 Subtask Results:
 ${combinedResults}
-
 Please provide a clean, consolidated solution that integrates all the components properly.`;
       
       const result = await openRouterModule.callOpenRouterApi(
@@ -285,6 +373,16 @@ Please provide a clean, consolidated solution that integrates all the components
       // If synthesis fails, return the combined results without additional processing
       combinedResults += '\n\n## Note\n\nAutomatic synthesis failed. The above components need to be manually integrated.';
       return combinedResults;
+    }
+  },
+
+  /**
+   * Cleans up resources used by the coordinator
+   */
+  dispose(): void {
+    if (this._codeSearchEngine) {
+      this._codeSearchEngine.dispose();
+      this._codeSearchEngine = null;
     }
   }
 };

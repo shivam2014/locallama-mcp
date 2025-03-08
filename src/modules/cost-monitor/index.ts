@@ -8,6 +8,8 @@ import { getOpenRouterUsage, getAvailableModels } from './api.js';
 import { tokenManager, TokenUsage, CodeTaskContext } from './tokenManager.js';
 import { codeCache, CodePattern } from './codeCache.js';
 import { CodeSubtask } from '../decision-engine/types/codeTask.js';
+import { CodeSearchEngine, CodeSearchResult } from './codeSearch.js';
+import { BM25Searcher, BM25Options } from './bm25.js';
 
 /**
  * Code task optimization result interface
@@ -487,8 +489,20 @@ export const costMonitor = {
     this.tokenManager.clearCache();
     this.codeCache.clear();
     logger.debug("Cleared token and code caches");
+  },
+
+  /**
+   * Create a new code search engine for semantic search
+   * @param workspaceRoot Root directory of the workspace to index
+   * @param options Options for the code search engine
+   * @returns A new CodeSearchEngine instance
+   */
+  createCodeSearchEngine(workspaceRoot: string, options?: { excludePatterns?: string[] }): CodeSearchEngine {
+    logger.info(`Creating code search engine for workspace: ${workspaceRoot}`);
+    return new CodeSearchEngine(workspaceRoot, options);
   }
 };
 
 // Export types
-export type { TokenUsage, CodeTaskContext };
+export type { TokenUsage, CodeTaskContext, CodeSearchResult, BM25Options };
+export { CodeSearchEngine, BM25Searcher };
