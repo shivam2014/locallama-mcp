@@ -21,6 +21,7 @@ Consider:
 
 Analyze the task thoroughly and provide a structured decomposition in JSON format.`;
 
+// Update COMPLEXITY_ANALYSIS_PROMPT to include more detailed integration analysis
 const COMPLEXITY_ANALYSIS_PROMPT = `You are an expert in software development complexity analysis. 
 Analyze the complexity of the following coding task:
 
@@ -28,9 +29,23 @@ Task: {task}
 
 For this analysis:
 1. Assess algorithmic complexity (simple loops vs complex algorithms)
-2. Evaluate integration complexity (number of systems/components that need to interact)
+2. Evaluate integration complexity considering:
+   - Number of systems/components that need to interact
+   - Data format transformations required
+   - Communication protocols involved
+   - State management complexity
+   - Error handling across boundaries
 3. Consider domain knowledge requirements
 4. Evaluate technical requirements
+
+For integration complexity specifically, consider:
+- External system dependencies
+- API integration points
+- Data transformation requirements
+- State synchronization needs
+- Error handling complexity
+- Transaction management
+- Security requirements
 
 Provide a detailed analysis with complexity scores (0-1 scale) for each factor, an overall complexity score, and a brief explanation.`;
 
@@ -171,6 +186,11 @@ export const codeTaskAnalyzer = {
     logger.debug('Analyzing complexity of code task:', task);
     
     try {
+      // Get detailed integration factors
+      const integrationFactors = await evaluateIntegrationFactors(task);
+      const avgIntegrationComplexity = Object.values(integrationFactors)
+        .reduce((sum, val) => sum + val, 0) / Object.keys(integrationFactors).length;
+
       const prompt = COMPLEXITY_ANALYSIS_PROMPT.replace('{task}', task);
       
       // Try to use a free model for complexity analysis
@@ -190,17 +210,30 @@ export const codeTaskAnalyzer = {
         prompt,
         30000 // 30 seconds timeout
       );
-      
+
       if (!result.success || !result.text) {
         logger.error('Failed to analyze complexity:', result.error);
         throw new Error('Failed to analyze complexity');
       }
-      
-      return this.parseComplexityFromResponse(result.text);
+
+      const llmAnalysis = this.parseComplexityFromResponse(result.text);
+
+      // Combine LLM analysis with pattern-based analysis for integration complexity
+      return {
+        ...llmAnalysis,
+        factors: {
+          ...llmAnalysis.factors,
+          integration: Math.max(llmAnalysis.factors.integration, avgIntegrationComplexity)
+        },
+        metrics: {
+          ...llmAnalysis.metrics,
+          integrationFactors
+        }
+      };
     } catch (error) {
       logger.error('Error during code complexity analysis:', error);
       return {
-        overallComplexity: 0.5, // Default to medium complexity
+        overallComplexity: 0.5,
         factors: {
           algorithmic: 0.5,
           integration: 0.5,
@@ -396,3 +429,62 @@ export const codeTaskAnalyzer = {
     }
   }
 };
+
+/**
+ * Evaluate integration complexity factors in more detail
+ * @param taskDescription The task description
+ * @returns Detailed integration complexity factors
+ */
+async function evaluateIntegrationFactors(taskDescription: string): Promise<{
+  systemInteractions: number;
+  dataTransformations: number;
+  stateManagement: number;
+  errorHandling: number;
+  security: number;
+}> {
+  const patterns = {
+    systemInteractions: [
+      /api|integrate|connect|communicate|sync|external|service/i,
+      /database|storage|cache|queue/i,
+      /protocol|http|rest|graphql|grpc/i
+    ],
+    dataTransformations: [
+      /transform|convert|parse|format|serialize|deserialize/i,
+      /json|xml|csv|binary|protobuf/i,
+      /mapping|schema|model|interface/i
+    ],
+    stateManagement: [
+      /state|status|lifecycle|transaction/i,
+      /concurrent|parallel|async|sync/i,
+      /manage|control|maintain|track/i
+    ],
+    errorHandling: [
+      /error|exception|fault|failure/i,
+      /handle|catch|try|recover/i,
+      /fallback|retry|timeout/i
+    ],
+    security: [
+      /security|auth|identity|permission/i,
+      /encrypt|decrypt|token|key/i,
+      /validate|verify|protect/i
+    ]
+  };
+
+  const scores = {
+    systemInteractions: 0,
+    dataTransformations: 0,
+    stateManagement: 0,
+    errorHandling: 0,
+    security: 0
+  };
+
+  // Evaluate each factor based on pattern matching
+  for (const [factor, patternList] of Object.entries(patterns)) {
+    const matches = patternList.reduce((count, pattern) => {
+      return count + (pattern.test(taskDescription) ? 1 : 0);
+    }, 0);
+    scores[factor] = Math.min(matches / patternList.length, 1);
+  }
+
+  return scores;
+}

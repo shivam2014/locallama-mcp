@@ -211,6 +211,113 @@ export const dependencyMapper = {
   },
   
   /**
+   * Calculate the critical path and detailed metrics
+   * 
+   * @param decomposedTask The decomposed code task
+   * @returns An object containing critical path and detailed analysis
+   */
+  analyzeTaskPath(decomposedTask: DecomposedCodeTask): {
+    criticalPath: CodeSubtask[];
+    metrics: NonNullable<CodeComplexityResult['metrics']>['criticalPath'];
+  } {
+    const criticalPath = this.findCriticalPath(decomposedTask);
+    const { subtasks, dependencyMap } = decomposedTask;
+
+    // Calculate total duration and find bottlenecks
+    const duration = criticalPath.reduce((sum, task) => sum + task.estimatedTokens, 0);
+    
+    // Analyze potential bottlenecks
+    const bottlenecks = criticalPath.map(task => {
+      // Calculate impact based on:
+      // 1. Number of dependent tasks
+      // 2. Complexity score
+      // 3. Position in critical path
+      const dependentTasks = subtasks.filter(s => 
+        (dependencyMap[s.id] || []).includes(task.id)
+      ).length;
+
+      const positionImpact = criticalPath.indexOf(task) / criticalPath.length;
+      const impact = (
+        (task.complexity * 0.4) +
+        (dependentTasks / subtasks.length * 0.4) +
+        (positionImpact * 0.2)
+      );
+
+      return {
+        id: task.id,
+        description: task.description,
+        impact
+      };
+    }).filter(b => b.impact > 0.5); // Only include significant bottlenecks
+
+    // Calculate parallelization potential
+    const independentPaths = this.findIndependentPaths(decomposedTask);
+    const maxParallelPaths = independentPaths.length;
+    const totalTasks = subtasks.length;
+    const parallelizationScore = Math.min(
+      maxParallelPaths / Math.ceil(Math.sqrt(totalTasks)),
+      1
+    );
+
+    return {
+      criticalPath,
+      metrics: {
+        duration,
+        bottlenecks,
+        parallelizationScore
+      }
+    };
+  },
+
+  /**
+   * Find independent paths that can be executed in parallel
+   * 
+   * @param decomposedTask The decomposed code task
+   * @returns Array of independent task paths
+   */
+  findIndependentPaths(decomposedTask: DecomposedCodeTask): CodeSubtask[][] {
+    const { subtasks, dependencyMap } = decomposedTask;
+    const paths: CodeSubtask[][] = [];
+    const visited = new Set<string>();
+
+    // Helper function to check if two tasks are independent
+    const areIndependent = (task1: CodeSubtask, task2: CodeSubtask): boolean => {
+      const deps1 = new Set(dependencyMap[task1.id] || []);
+      const deps2 = new Set(dependencyMap[task2.id] || []);
+      return !deps1.has(task2.id) && !deps2.has(task1.id);
+    };
+
+    // Find paths of independent tasks
+    for (const startTask of subtasks) {
+      if (visited.has(startTask.id)) continue;
+
+      const currentPath: CodeSubtask[] = [startTask];
+      visited.add(startTask.id);
+
+      // Try to extend the path with independent tasks
+      for (const task of subtasks) {
+        if (visited.has(task.id)) continue;
+
+        // Check if task is independent from all tasks in current path
+        const isIndependentFromPath = currentPath.every(
+          pathTask => areIndependent(task, pathTask)
+        );
+
+        if (isIndependentFromPath) {
+          currentPath.push(task);
+          visited.add(task.id);
+        }
+      }
+
+      if (currentPath.length > 0) {
+        paths.push(currentPath);
+      }
+    }
+
+    return paths;
+  },
+
+  /**
    * Calculate the critical path of subtasks based on their dependencies and estimated token counts
    * 
    * @param decomposedTask The decomposed code task

@@ -97,7 +97,26 @@ export interface CodeComplexityResult {
   };
   
   /** Any additional metrics */
-  metrics?: Record<string, number>;
+  metrics?: {
+    /** Detailed integration complexity factors */
+    integrationFactors?: {
+      systemInteractions: number;
+      dataTransformations: number;
+      stateManagement: number;
+      errorHandling: number;
+      security: number;
+    };
+    /** Critical path analysis details */
+    criticalPath?: {
+      duration: number;
+      bottlenecks: Array<{
+        id: string;
+        description: string;
+        impact: number;
+      }>;
+      parallelizationScore: number;
+    };
+  };
   
   /** Explanation of complexity analysis */
   explanation: string;
