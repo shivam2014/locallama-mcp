@@ -66,7 +66,7 @@ export interface CodeTaskAnalysisOptions {
   
   /** Custom token budget per subtask */
   tokenBudgetPerSubtask?: number;
-  
+    
   /** Path to the workspace root for code search */
   workspacePath?: string;
   
