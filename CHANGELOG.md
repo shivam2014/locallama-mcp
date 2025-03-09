@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.8.0](https://github.com/Heratiki/locallama-mcp/compare/v1.7.0...v1.8.0) (2025-03-09)
+
+
+### Features
+
+* enhance CodeSearchEngine with configurable options for chunk size, exclusion patterns, and BM25 parameters ([8ff31d9](https://github.com/Heratiki/locallama-mcp/commit/8ff31d96ea00734fdc473aa9ece802f8dd64ceef))
+
+
+### Bug Fixes
+
+* enhance task routing and model selection with additional type definitions and method renaming ([ceb06ec](https://github.com/Heratiki/locallama-mcp/commit/ceb06ec04d4e8d92fb3a9998f57af8e8af7e9f76))
+
 ## [1.7.0](https://github.com/Heratiki/locallama-mcp/compare/v1.6.1...v1.7.0) (2025-03-09)
 
 
