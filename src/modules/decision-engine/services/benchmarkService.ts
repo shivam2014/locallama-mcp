@@ -2,7 +2,7 @@ import { logger } from '../../../utils/logger.js';
 import { openRouterModule } from '../../openrouter/index.js';
 import { modelsDbService } from './modelsDb.js';
 import { costMonitor } from '../../cost-monitor/index.js';
-import { ModelPerformanceData, COMPLEXITY_THRESHOLDS } from '../types/index.js';
+import { COMPLEXITY_THRESHOLDS, ModelPerformanceData } from '../types/index.js';
 import { Model } from '../../../types/index.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -24,7 +24,7 @@ export const benchmarkService = {
       const modelsDb = modelsDbService.getDatabase();
       
       // Check if we've already benchmarked this model recently
-      const modelData = modelsDb.models[modelId];
+      const modelData = modelsDb.models[modelId] as ModelPerformanceData;
       if (!modelData) {
         logger.warn(`Model ${modelId} not found in models database`);
         return;
@@ -94,7 +94,7 @@ export const benchmarkService = {
           complexityScore: complexity,
           lastBenchmarked: new Date().toISOString(),
           benchmarkCount
-        };
+        } as ModelPerformanceData;
         
         logger.info(`Successfully benchmarked ${modelId}: Quality=${qualityScore.toFixed(2)}, Time=${responseTime}ms`);
       } else if (result) {
@@ -108,13 +108,13 @@ export const benchmarkService = {
           successRate: weightedSuccessRate,
           lastBenchmarked: new Date().toISOString(),
           benchmarkCount
-        };
+        } as ModelPerformanceData;
         
         logger.warn(`Failed to benchmark ${modelId}: ${result.error}`);
       }
       
-      // Save the database
-      await modelsDbService.save();
+      // Save the database - modelsDbService doesn't have a save method, use updateModelData instead
+      modelsDbService.updateModelData(modelId, modelsDb.models[modelId]);
     } catch (error) {
       logger.error(`Error benchmarking model ${modelId}:`, error);
     }
@@ -178,7 +178,8 @@ export const benchmarkService = {
       // Check which models have already been benchmarked
       const benchmarkedModels = new Set<string>();
       for (const [modelId, modelData] of Object.entries(modelsDb.models)) {
-        if (modelData.benchmarkCount > 0) {
+        const perfData = modelData as ModelPerformanceData;
+        if (perfData.benchmarkCount > 0) {
           benchmarkedModels.add(modelId);
         }
       }
@@ -200,7 +201,7 @@ export const benchmarkService = {
           .filter(model => modelsDb.models[model.id])
           .map(model => ({
             model,
-            benchmarkCount: modelsDb.models[model.id].benchmarkCount || 0
+            benchmarkCount: (modelsDb.models[model.id] as ModelPerformanceData).benchmarkCount || 0
           }))
           .sort((a, b) => a.benchmarkCount - b.benchmarkCount);
         
@@ -226,7 +227,7 @@ export const benchmarkService = {
         logger.info(`Benchmarking model: ${model.id}`);
         
         // Check if we've already benchmarked this model recently (within 7 days)
-        const modelData = modelsDb.models[model.id];
+        const modelData = modelsDb.models[model.id] as ModelPerformanceData;
         if (modelData && modelData.lastBenchmarked) {
           const lastBenchmarked = new Date(modelData.lastBenchmarked);
           const now = new Date();
@@ -280,26 +281,27 @@ export const benchmarkService = {
                   lastBenchmarked: new Date().toISOString(),
                   benchmarkCount: 1,
                   isFree: true
-                };
+                } as ModelPerformanceData;
               } else {
                 // Update existing model data with a weighted average
-                const benchmarkCount = modelsDb.models[model.id].benchmarkCount + 1;
-                const weightedSuccessRate = (modelsDb.models[model.id].successRate *
-                  modelsDb.models[model.id].benchmarkCount + (isWorkingCode ? 1 : 0)) / benchmarkCount;
-                const weightedQualityScore = (modelsDb.models[model.id].qualityScore *
-                  modelsDb.models[model.id].benchmarkCount + qualityScore) / benchmarkCount;
-                const weightedResponseTime = (modelsDb.models[model.id].avgResponseTime *
-                  modelsDb.models[model.id].benchmarkCount + responseTime) / benchmarkCount;
+                const modelPerf = modelsDb.models[model.id] as ModelPerformanceData;
+                const benchmarkCount = modelPerf.benchmarkCount + 1;
+                const weightedSuccessRate = (modelPerf.successRate *
+                  modelPerf.benchmarkCount + (isWorkingCode ? 1 : 0)) / benchmarkCount;
+                const weightedQualityScore = (modelPerf.qualityScore *
+                  modelPerf.benchmarkCount + qualityScore) / benchmarkCount;
+                const weightedResponseTime = (modelPerf.avgResponseTime *
+                  modelPerf.benchmarkCount + responseTime) / benchmarkCount;
                 
                 modelsDb.models[model.id] = {
-                  ...modelsDb.models[model.id],
+                  ...modelPerf,
                   successRate: weightedSuccessRate,
                   qualityScore: weightedQualityScore,
                   avgResponseTime: weightedResponseTime,
-                  complexityScore: (modelsDb.models[model.id].complexityScore + task.complexity) / 2,
+                  complexityScore: (modelPerf.complexityScore + task.complexity) / 2,
                   lastBenchmarked: new Date().toISOString(),
                   benchmarkCount
-                };
+                } as ModelPerformanceData;
               }
               
               logger.info(`Benchmarked ${model.id} with task ${task.name}: Working code=${isWorkingCode}, Quality=${qualityScore.toFixed(2)}, Time=${responseTime}ms`);
@@ -320,44 +322,47 @@ export const benchmarkService = {
                   lastBenchmarked: new Date().toISOString(),
                   benchmarkCount: 1,
                   isFree: true
-                };
+                } as ModelPerformanceData;
               } else {
                 // Update failure rate
-                const benchmarkCount = modelsDb.models[model.id].benchmarkCount + 1;
-                const weightedSuccessRate = (modelsDb.models[model.id].successRate *
-                  modelsDb.models[model.id].benchmarkCount) / benchmarkCount;
+                const modelPerf = modelsDb.models[model.id] as ModelPerformanceData;
+                const benchmarkCount = modelPerf.benchmarkCount + 1;
+                const weightedSuccessRate = (modelPerf.successRate *
+                  modelPerf.benchmarkCount) / benchmarkCount;
                 
                 modelsDb.models[model.id] = {
-                  ...modelsDb.models[model.id],
+                  ...modelPerf,
                   successRate: weightedSuccessRate,
                   lastBenchmarked: new Date().toISOString(),
                   benchmarkCount
-                };
+                } as ModelPerformanceData;
               }
               
               logger.warn(`Model ${model.id} failed to produce a valid response for task ${task.name}`);
             }
             
             // Save the database after each benchmark to preserve progress
-            await modelsDbService.save();
+            // Use updateModelData instead of the non-existent save method
+            modelsDbService.updateModelData(model.id, modelsDb.models[model.id]);
             
           } catch (error) {
             logger.error(`Error benchmarking ${model.id} with task ${task.name}:`, error);
             
             // Mark the model as failed in the database
             if (modelsDb.models[model.id]) {
-              const benchmarkCount = modelsDb.models[model.id].benchmarkCount + 1;
-              const weightedSuccessRate = (modelsDb.models[model.id].successRate *
-                modelsDb.models[model.id].benchmarkCount) / benchmarkCount;
+              const modelPerf = modelsDb.models[model.id] as ModelPerformanceData;
+              const benchmarkCount = modelPerf.benchmarkCount + 1;
+              const weightedSuccessRate = (modelPerf.successRate *
+                modelPerf.benchmarkCount) / benchmarkCount;
               
               modelsDb.models[model.id] = {
-                ...modelsDb.models[model.id],
+                ...modelPerf,
                 successRate: weightedSuccessRate,
                 lastBenchmarked: new Date().toISOString(),
                 benchmarkCount
-              };
+              } as ModelPerformanceData;
               
-              await modelsDbService.save();
+              modelsDbService.updateModelData(model.id, modelsDb.models[model.id]);
             }
           }
           
@@ -384,49 +389,54 @@ export const benchmarkService = {
    * This is a simplified version - the full version is in the codeEvaluation service
    */
   evaluateCodeQuality(task: string, response: string, taskType: string = 'general'): number {
-    // Simplified evaluation for benchmarking
-    let score = 0;
-    const responseLower = response.toLowerCase();
-    
-    // Check if the response contains code
-    const hasCode = response.includes('function') ||
-                    response.includes('def ') ||
-                    response.includes('class ') ||
-                    response.includes('const ') ||
-                    response.includes('let ') ||
-                    response.includes('var ');
-    
-    // Check for code blocks (markdown or other formats)
-    const hasCodeBlocks = response.includes('```') ||
-                          response.includes('    ') || // Indented code
-                          response.includes('<code>');
-    
-    // Basic quality scoring
-    if (hasCode) score += 0.3;
-    if (hasCodeBlocks) score += 0.2;
-    
-    // Task-specific checks
-    if (taskType === 'factorial') {
-      if (response.includes('factorial') && 
-          (response.includes('*') || response.includes('product')) &&
-          (response.includes('if') || response.includes('return'))) {
-        score += 0.4;
+    try {
+      // Simplified evaluation for benchmarking
+      let score = 0;
+      const responseLower = response.toLowerCase();
+
+      // Check if the response contains code
+      const hasCode = response.includes('function') ||
+                      response.includes('def ') ||
+                      response.includes('class ') ||
+                      response.includes('const ') ||
+                      response.includes('let ') ||
+                      response.includes('var ');
+
+      // Check for code blocks (markdown or other formats)
+      const hasCodeBlocks = response.includes('```') ||
+                            response.includes('    ') || // Indented code
+                            response.includes('<code>');
+
+      // Basic quality scoring
+      if (hasCode) score += 0.3;
+      if (hasCodeBlocks) score += 0.2;
+
+      // Task-specific checks
+      if (taskType === 'factorial') {
+        if (response.includes('factorial') && 
+            (response.includes('*') || response.includes('product')) &&
+            (response.includes('if') || response.includes('return'))) {
+          score += 0.4;
+        }
+      } else if (taskType === 'binary-search') {
+        if (response.includes('binarySearch') && 
+            response.includes('mid') &&
+            (response.includes('log') || response.includes('complexity'))) {
+          score += 0.4;
+        }
       }
-    } else if (taskType === 'binary-search') {
-      if (response.includes('binarySearch') && 
-          response.includes('mid') &&
-          response.includes('log') || response.includes('complexity')) {
-        score += 0.4;
+
+      // Penalize very short responses
+      if (response.length < 100) {
+        score *= (response.length / 100);
       }
+
+      // Cap score between 0 and 1
+      return Math.min(1, Math.max(0, score));
+    } catch (error) {
+      logger.error(`Error evaluating code quality for task ${task}:`, error);
+      return 0; // Return a default score in case of error
     }
-    
-    // Penalize very short responses
-    if (response.length < 100) {
-      score *= (response.length / 100);
-    }
-    
-    // Cap score between 0 and 1
-    return Math.min(1, Math.max(0, score));
   },
 
   /**
