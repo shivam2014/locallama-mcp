@@ -11,7 +11,11 @@ import { openRouterModule } from '../openrouter/index.js';
 import { config } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf8'));
