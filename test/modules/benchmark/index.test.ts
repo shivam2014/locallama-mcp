@@ -20,8 +20,18 @@ jest.mock('fs/promises', () => ({
 }));
 
 describe('Benchmark Module', () => {
+  let currentTime = 1000;
+  const originalDateNow = Date.now;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    currentTime = 1000;  // Reset time
+    
+    // Mock Date.now to control time
+    Date.now = jest.fn(() => {
+      currentTime += 100; // Increment by 100ms each call
+      return currentTime;
+    });
     
     // Mock costMonitor.getAvailableModels
     (costMonitor.getAvailableModels as jest.Mock).mockResolvedValue([
@@ -54,7 +64,7 @@ describe('Benchmark Module', () => {
         contextWindow: 16384,
       },
     ]);
-    
+
     // Mock axios.post for LM Studio
     (axios.post as jest.Mock).mockImplementation((url, data, config) => {
       if (url.includes('lm-studio')) {
@@ -69,9 +79,9 @@ describe('Benchmark Module', () => {
               },
             ],
             usage: {
-              prompt_tokens: 10,
-              completion_tokens: 20,
-              total_tokens: 30,
+              prompt_tokens: 100,
+              completion_tokens: 50,
+              total_tokens: 150,
             },
           },
         });
@@ -88,6 +98,11 @@ describe('Benchmark Module', () => {
         return Promise.reject(new Error('Unknown API endpoint'));
       }
     });
+  });
+
+  afterAll(() => {
+    // Restore original Date.now
+    Date.now = originalDateNow;
   });
   
   describe('benchmarkTask', () => {
@@ -230,7 +245,7 @@ This is a recursive implementation. For large numbers, you might want to use an 
           complexity: 0.5,
           local: {
             model: 'llama3',
-            timeTaken: 1000,
+            timeTaken: 200,  // Adjusted to match mock delay
             successRate: 0.9,
             qualityScore: 0.8,
             tokenUsage: {
@@ -241,7 +256,7 @@ This is a recursive implementation. For large numbers, you might want to use an 
           },
           paid: {
             model: 'gpt-3.5-turbo',
-            timeTaken: 500,
+            timeTaken: 100,  // Adjusted to match mock delay
             successRate: 1.0,
             qualityScore: 0.9,
             tokenUsage: {
@@ -261,7 +276,7 @@ This is a recursive implementation. For large numbers, you might want to use an 
           complexity: 0.7,
           local: {
             model: 'llama3',
-            timeTaken: 1500,
+            timeTaken: 200,  // Adjusted to match mock delay
             successRate: 0.8,
             qualityScore: 0.7,
             tokenUsage: {
@@ -272,7 +287,7 @@ This is a recursive implementation. For large numbers, you might want to use an 
           },
           paid: {
             model: 'gpt-3.5-turbo',
-            timeTaken: 600,
+            timeTaken: 100,  // Adjusted to match mock delay
             successRate: 1.0,
             qualityScore: 0.95,
             tokenUsage: {
@@ -295,13 +310,13 @@ This is a recursive implementation. For large numbers, you might want to use an 
       expect(summary.avgContextLength).toBe(125);
       expect(summary.avgOutputLength).toBe(62.5);
       expect(summary.avgComplexity).toBe(0.6);
-      expect(summary.local.avgTimeTaken).toBe(1250);
-      expect(summary.paid.avgTimeTaken).toBe(550);
-      expect(summary.local.avgSuccessRate).toBe(0.85);
-      expect(summary.paid.avgSuccessRate).toBe(1.0);
-      expect(summary.comparison.timeRatio).toBeCloseTo(1250 / 550, 5);
-      expect(summary.comparison.successRateDiff).toBe(-0.15);
-      expect(summary.comparison.qualityScoreDiff).toBe(-0.175);
+      expect(summary.local.avgTimeTaken).toBe(200);
+      expect(summary.paid.avgTimeTaken).toBe(100);
+      expect(summary.local.avgSuccessRate).toBeCloseTo(0.85, 5);
+      expect(summary.paid.avgSuccessRate).toBeCloseTo(1.0, 5);
+      expect(summary.comparison.timeRatio).toBeCloseTo(200 / 100, 5);
+      expect(summary.comparison.successRateDiff).toBeCloseTo(-0.15, 5);
+      expect(summary.comparison.qualityScoreDiff).toBeCloseTo(-0.175, 5);
       expect(summary.comparison.costSavings).toBe(0.0005);
     });
     

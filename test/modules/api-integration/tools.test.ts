@@ -1,6 +1,7 @@
 import { setupToolHandlers } from '../../../src/modules/api-integration/tools.js';
 import { decisionEngine } from '../../../src/modules/decision-engine/index.js';
 import { costMonitor } from '../../../src/modules/cost-monitor/index.js';
+import { taskVerificationService } from '../../../src/modules/decision-engine/services/taskVerificationService.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -12,6 +13,14 @@ import {
 // Mock dependencies
 jest.mock('../../../src/modules/decision-engine/index.js');
 jest.mock('../../../src/modules/cost-monitor/index.js');
+jest.mock('../../../src/modules/decision-engine/services/taskVerificationService.js');
+jest.mock('../../../src/modules/api-integration/tools.js', () => {
+  const originalModule = jest.requireActual('../../../src/modules/api-integration/tools.js');
+  return {
+    ...originalModule,
+    isOpenRouterConfigured: () => false
+  };
+});
 jest.mock('../../../src/utils/logger.js', () => ({
   logger: {
     debug: jest.fn(),
@@ -119,16 +128,23 @@ describe('API Integration - Tools', () => {
     test('returns list of available tools', async () => {
       const result = await listToolsHandler();
       
-      expect(result.tools).toHaveLength(2);
-      expect(result.tools[0].name).toBe('route_task');
-      expect(result.tools[1].name).toBe('get_cost_estimate');
+      expect(result.tools).toHaveLength(7);
+      expect(result.tools.map((t: { name: string }) => t.name)).toEqual([
+        'route_task',
+        'run_linter',
+        'run_tests',
+        'preemptive_route_task',
+        'get_cost_estimate',
+        'benchmark_task',
+        'benchmark_tasks'
+      ]);
       
       // Verify input schemas
       const routeTaskSchema = result.tools[0].inputSchema;
       expect(routeTaskSchema.required).toContain('task');
       expect(routeTaskSchema.required).toContain('context_length');
       
-      const costEstimateSchema = result.tools[1].inputSchema;
+      const costEstimateSchema = result.tools[5].inputSchema;
       expect(costEstimateSchema.required).toContain('context_length');
     });
   });
@@ -162,6 +178,124 @@ describe('API Integration - Tools', () => {
         complexity: 0.6,
         priority: 'cost'
       });
+    });
+
+    test('handles run_linter tool call', async () => {
+      // Mock linter success response
+      (taskVerificationService.runLinter as jest.Mock).mockResolvedValue({
+        success: true,
+        issues: []
+      });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'run_linter',
+          arguments: {
+            code: 'function add(a, b) { return a + b; }',
+            language: 'javascript'
+          }
+        }
+      });
+
+      expect(result.content).toHaveLength(1);
+      expect(result.content[0].type).toBe('text');
+
+      const linterResult = JSON.parse(result.content[0].text);
+      expect(linterResult.success).toBe(true);
+      expect(linterResult.issues).toHaveLength(0);
+
+      expect(taskVerificationService.runLinter).toHaveBeenCalledWith(
+        'function add(a, b) { return a + b; }',
+        'javascript'
+      );
+    });
+
+    test('handles run_linter tool call with issues', async () => {
+      // Mock linter response with issues
+      (taskVerificationService.runLinter as jest.Mock).mockResolvedValue({
+        success: false,
+        issues: ['Use const instead of var', 'Use === instead of ==']
+      });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'run_linter',
+          arguments: {
+            code: 'var x = 1; if (x == 2) {}',
+            language: 'javascript'
+          }
+        }
+      });
+
+      const linterResult = JSON.parse(result.content[0].text);
+      expect(linterResult.success).toBe(false);
+      expect(linterResult.issues).toHaveLength(2);
+    });
+
+    test('handles run_tests tool call', async () => {
+      // Mock test runner success response
+      (taskVerificationService.runTests as jest.Mock).mockResolvedValue({
+        success: true,
+        results: [
+          { passed: true },
+          { passed: true }
+        ]
+      });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'run_tests',
+          arguments: {
+            code: 'function add(input) { return input.a + input.b; }',
+            testCases: [
+              {
+                input: '{"a": 1, "b": 2}',
+                expectedOutput: '3'
+              },
+              {
+                input: '{"a": -1, "b": 1}',
+                expectedOutput: '0'
+              }
+            ]
+          }
+        }
+      });
+
+      expect(result.content).toHaveLength(1);
+      const testResults = JSON.parse(result.content[0].text);
+      expect(testResults.success).toBe(true);
+      expect(testResults.results).toHaveLength(2);
+      expect(testResults.results.every((r: { passed: boolean }) => r.passed)).toBe(true);
+    });
+
+    test('handles run_tests tool call with failures', async () => {
+      // Mock test runner response with failures
+      (taskVerificationService.runTests as jest.Mock).mockResolvedValue({
+        success: false,
+        results: [
+          { passed: false, error: 'Expected 3 but got -1' }
+        ]
+      });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'run_tests',
+          arguments: {
+            code: 'function add(input) { return input.a - input.b; }', // Bug: subtraction instead of addition
+            testCases: [
+              {
+                input: '{"a": 1, "b": 2}',
+                expectedOutput: '3'
+              }
+            ]
+          }
+        }
+      });
+
+      const testResults = JSON.parse(result.content[0].text);
+      expect(testResults.success).toBe(false);
+      expect(testResults.results[0].passed).toBe(false);
+      expect(testResults.results[0].error).toBeDefined();
     });
     
     test('handles get_cost_estimate tool call', async () => {

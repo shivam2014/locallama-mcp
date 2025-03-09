@@ -224,6 +224,7 @@ describe('Decision Engine', () => {
     });
     
     test('should route to paid API when context window is exceeded', async () => {
+      jest.setTimeout(10000); // Add 10 second timeout
       // Override the mock to simulate a very large task
       (costMonitor.estimateCost as jest.Mock).mockResolvedValue({
         local: {

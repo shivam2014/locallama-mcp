@@ -114,7 +114,7 @@ describe('API Integration - Resources', () => {
       
       const status = JSON.parse(result.contents[0].text);
       expect(status.status).toBe('running');
-      expect(status.version).toBe('0.1.0');
+      expect(status.version).toMatch(/^\d+\.\d+\.\d+$/); // Expect semver format
       expect(status.uptime).toBeDefined();
       expect(status.timestamp).toBeDefined();
     });

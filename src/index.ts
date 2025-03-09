@@ -9,7 +9,12 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 // Read version from package.json
-const packageJson = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8'));
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
 const version = packageJson.version;
 
 /**

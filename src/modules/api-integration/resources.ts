@@ -11,11 +11,19 @@ import { openRouterModule } from '../openrouter/index.js';
 import { config } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+// For testing purposes, allow version override
+export const getVersion = () => {
+  try {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+    return packageJson.version;
+  } catch {
+    return 'unknown'; // Version couldn't be determined
+  }
+}
 
-// Read version from package.json
-const packageJson = JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf8'));
-const version = packageJson.version;
+const version = getVersion();
 
 /**
  * Check if OpenRouter API key is configured

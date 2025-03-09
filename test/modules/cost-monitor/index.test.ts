@@ -76,9 +76,13 @@ describe('Cost Monitor', () => {
       const llama3Model = result.find(m => m.id === 'llama3');
       expect(llama3Model?.contextWindow).toBe(8192); // From the modelContextWindows mapping
       
-      // Verify axios calls
-      expect(axios.get).toHaveBeenCalledWith('http://localhost:1234/v1/models');
-      expect(axios.get).toHaveBeenCalledWith('http://localhost:11434/api/tags');
+      // Verify axios calls with timeout
+      expect(axios.get).toHaveBeenCalledWith('http://localhost:1234/v1/models', {
+        timeout: 5000
+      });
+      expect(axios.get).toHaveBeenCalledWith('http://localhost:11434/api/tags', {
+        timeout: 5000
+      });
     });
     
     test('handles LM Studio API failure', async () => {
