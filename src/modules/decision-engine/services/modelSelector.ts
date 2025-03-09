@@ -68,7 +68,13 @@ export const modelSelector = {
         let score = 0;
         
         // Check if we have performance data for this model
-        const modelData = modelsDb.models[model.id];
+        const modelData = modelsDb.models[model.id] as unknown as {
+          benchmarkCount: number;
+          successRate: number;
+          qualityScore: number;
+          avgResponseTime: number;
+          complexityScore: number;
+        };
         
         if (modelData && modelData.benchmarkCount > 0) {
           // Calculate score based on performance data
@@ -210,7 +216,13 @@ export const modelSelector = {
         let score = 0;
         
         // Check if we have performance data for this model
-        const modelData = modelsDb.models[model.id];
+        const modelData = modelsDb.models[model.id] as unknown as {
+          benchmarkCount: number;
+          successRate: number;
+          qualityScore: number;
+          avgResponseTime: number;
+          complexityScore: number;
+        };
         
         if (modelData && modelData.benchmarkCount > 0) {
           // Calculate score based on performance data
@@ -281,7 +293,6 @@ export const modelSelector = {
           bestModel = model;
         }
       }
-
       // If we couldn't find a best model based on scores, fall back to context window and other heuristics
       if (!bestModel && suitableModels.length > 0) {
         if (complexity >= COMPLEXITY_THRESHOLDS.MEDIUM) {

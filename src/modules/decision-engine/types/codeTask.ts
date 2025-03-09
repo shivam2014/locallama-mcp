@@ -104,6 +104,9 @@ export interface CodeComplexityResult {
     /** Detailed domain knowledge factors */
     domainFactors?: DomainFactors;
     
+    /** Technical factors */
+    technicalFactors?: Record<string, number>;
+    
     /** Critical path analysis details */
     criticalPath?: {
       duration: number;

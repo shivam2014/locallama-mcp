@@ -3,7 +3,7 @@ import { Model } from '../../../types/index.js';
 import { COMPLEXITY_THRESHOLDS } from '../types/index.js';
 import { modelPerformanceTracker } from './modelPerformance.js';
 import { costMonitor } from '../../cost-monitor/index.js';
-import { CodeSubtask } from '../types/codeTask.js';
+import { CodeSubtask, Task } from '../types/codeTask.js';
 import TaskExecutor from './taskExecutor.js';
 
 interface RoutingStrategy {
@@ -57,7 +57,10 @@ class TaskRouter {
     this._modelLoads = new Map();
   }
 
-  public routeTask(task: Task): void {
+  /**
+   * Add a task to the executor queue
+   */
+  public addTask(task: Task): void {
     this.taskExecutor.addTask(task);
   }
 

@@ -10,6 +10,10 @@ import { codeCache, CodePattern } from './codeCache.js';
 import { CodeSubtask } from '../decision-engine/types/codeTask.js';
 import { CodeSearchEngine, CodeSearchResult } from './codeSearch.js';
 import { BM25Searcher, BM25Options } from './bm25.js';
+// Import ModelPerformanceData interface
+import { ModelPerformanceData } from '../decision-engine/types/index.js';
+// Import modelsDbService
+import { modelsDbService } from '../decision-engine/services/modelsDb.js';
 
 /**
  * Code task optimization result interface
@@ -506,7 +510,8 @@ export const costMonitor = {
    * Get model performance data
    */
   async getModelPerformanceData(): Promise<Record<string, ModelPerformanceData>> {
-    return modelsDbService.getDatabase().models;
+    // Cast to the expected return type to fix type mismatch between different ModelPerformanceData interfaces
+    return modelsDbService.getDatabase().models as unknown as Record<string, ModelPerformanceData>;
   },
 
   /**
