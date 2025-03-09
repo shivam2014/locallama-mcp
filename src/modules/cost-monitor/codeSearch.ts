@@ -3,6 +3,14 @@
  * Implements code repository indexing and searching using retriv's BM25 algorithm.
  * This module handles scanning the workspace, indexing code files, and providing search functionality.
  */
+import { BM25Options } from './bm25.js';
+
+export interface CodeSearchEngineOptions {
+  chunkSize?: number;
+  excludePatterns?: string[];
+  bm25Options?: BM25Options;
+}
+
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -32,6 +40,7 @@ export class CodeSearchEngine {
   private indexedPaths: Set<string> = new Set();
   private workspaceRoot: string;
   private initialized: boolean = false;
+  private options: CodeSearchEngineOptions;
   private indexingStatus = {
     indexing: false,
     filesIndexed: 0,
@@ -52,12 +61,11 @@ export class CodeSearchEngine {
     '**/yarn.lock'
   ];
 
-  constructor(workspaceRoot: string, options?: { excludePatterns?: string[] }) {
+  constructor(workspaceRoot: string, options: CodeSearchEngineOptions = {}) {
     this.workspaceRoot = workspaceRoot;
-    this.bm25Searcher = new BM25Searcher();
-    if (options?.excludePatterns) {
-      this.excludePatterns = [...this.excludePatterns, ...options.excludePatterns];
-    }
+    this.options = options;
+    this.bm25Searcher = new BM25Searcher(options.bm25Options);
+    this.excludePatterns = options.excludePatterns || this.excludePatterns;
   }
 
   /**
@@ -257,16 +265,16 @@ export class CodeSearchEngine {
         });
 
         // Chunk large files into smaller documents
-        const CHUNK_SIZE = 1000; // Define chunk size (number of lines)
+        const chunkSize = this.options.chunkSize || 1000; // Define chunk size (number of lines)
         const lines = content.split('\n');
-        for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
-          const chunkContent = lines.slice(i, i + CHUNK_SIZE).join('\n');
+        for (let i = 0; i < lines.length; i += chunkSize) {
+          const chunkContent = lines.slice(i, i + chunkSize).join('\n');
           documents.push({
             content: chunkContent,
             path: filePath,
             language,
             startLine: i + 1,
-            endLine: Math.min(i + CHUNK_SIZE, lines.length)
+            endLine: Math.min(i + chunkSize, lines.length)
           });
         }
       } catch (error) {

@@ -503,7 +503,15 @@ export const costMonitor = {
    */
   createCodeSearchEngine(workspaceRoot: string, options?: { excludePatterns?: string[] }): CodeSearchEngine {
     logger.info(`Creating code search engine for workspace: ${workspaceRoot}`);
-    return new CodeSearchEngine(workspaceRoot, options);
+    const codeSearchOptions = {
+      chunkSize: 500,
+      excludePatterns: ['**/test/**'],
+      bm25Options: {
+        k1: 1.2,
+        b: 0.8
+      }
+    };
+    return new CodeSearchEngine(workspaceRoot, codeSearchOptions);
   },
 
   /**
